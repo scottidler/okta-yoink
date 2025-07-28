@@ -79,13 +79,13 @@ class TestOktaTokenExtractor:
         config = Config()
         config.CHROME_BINARY_PATH = "/custom/chrome"
         config.CHROMEDRIVER_PATH = "/custom/chromedriver"
-        
+
         extractor = OktaTokenExtractor(config)
         extractor.setup_driver()
 
         # Should not call ChromeDriverManager when custom path is provided
         mock_driver_manager.assert_not_called()
-        
+
         # Check that Chrome was called with custom binary location
         args, kwargs = mock_chrome.call_args
         options = kwargs["options"]
@@ -110,12 +110,14 @@ class TestOktaTokenExtractor:
     def test_login_to_okta_success(self, mock_input) -> None:
         """Test successful login to Okta."""
         mock_driver = Mock()
+        mock_driver.current_url = "https://tatari.okta.com/signin"
+
         mock_wait = Mock()
         mock_username_field = Mock()
         mock_password_field = Mock()
         mock_submit_button = Mock()
 
-        # Setup mocks
+        # Setup mocks - first call to WebDriverWait finds username field
         mock_wait.until.return_value = mock_username_field
         mock_driver.find_element.side_effect = [mock_password_field, mock_submit_button]
 
@@ -138,7 +140,7 @@ class TestOktaTokenExtractor:
         """Test login with pre-configured username."""
         config = Config()
         config.OKTA_USERNAME = "configured.user@example.com"
-        
+
         mock_driver = Mock()
         mock_wait = Mock()
         mock_username_field = Mock()
@@ -161,6 +163,8 @@ class TestOktaTokenExtractor:
     def test_login_to_okta_timeout(self) -> None:
         """Test login timeout."""
         mock_driver = Mock()
+        mock_driver.current_url = "https://tatari.okta.com/signin"
+
         mock_wait = Mock()
         mock_wait.until.side_effect = TimeoutException("Timeout")
 
@@ -168,7 +172,7 @@ class TestOktaTokenExtractor:
         extractor.driver = mock_driver
 
         with patch("okta_token_automation.token_extractor.WebDriverWait", return_value=mock_wait):
-            with pytest.raises(OktaTokenExtractionError, match="Timeout waiting for Okta login page"):
+            with pytest.raises(OktaTokenExtractionError, match="Timeout waiting for Okta login page after 60s"):
                 extractor.login_to_okta()
 
     def test_handle_mfa_no_driver(self) -> None:
@@ -180,8 +184,12 @@ class TestOktaTokenExtractor:
     def test_handle_mfa_success(self) -> None:
         """Test successful MFA handling."""
         mock_driver = Mock()
+        mock_driver.current_url = "https://tatari.okta.com/signin/verify/webauthn"
+
+        # Mock the WebDriverWait calls - first for YubiKey button, then for completion
+        mock_yubikey_button = Mock()
         mock_wait = Mock()
-        mock_wait.until.return_value = True
+        mock_wait.until.side_effect = [mock_yubikey_button, True]  # First call finds button, second waits for completion
 
         extractor = OktaTokenExtractor()
         extractor.driver = mock_driver
@@ -189,8 +197,10 @@ class TestOktaTokenExtractor:
         with patch("okta_token_automation.token_extractor.WebDriverWait", return_value=mock_wait):
             extractor.handle_mfa()
 
-        # Verify WebDriverWait was called with correct timeout
-        mock_wait.until.assert_called_once()
+        # Verify YubiKey button was clicked
+        mock_yubikey_button.click.assert_called_once()
+        # Verify WebDriverWait was called twice (button selection + completion)
+        assert mock_wait.until.call_count == 2
 
     def test_handle_mfa_timeout(self) -> None:
         """Test MFA timeout."""
@@ -216,7 +226,7 @@ class TestOktaTokenExtractor:
         mock_driver = Mock()
         mock_wait = Mock()
         mock_json_element = Mock()
-        
+
         # Mock JSON response with oauth2_proxy header
         json_response = {
             "headers": {
@@ -226,7 +236,7 @@ class TestOktaTokenExtractor:
             }
         }
         mock_json_element.text = json.dumps(json_response)
-        
+
         mock_wait.until.return_value = mock_json_element
         mock_driver.find_element.return_value = mock_json_element
 
@@ -244,7 +254,7 @@ class TestOktaTokenExtractor:
         mock_driver = Mock()
         mock_wait = Mock()
         mock_json_element = Mock()
-        
+
         # Mock JSON response without oauth2_proxy header
         json_response = {
             "headers": {
@@ -253,7 +263,7 @@ class TestOktaTokenExtractor:
             }
         }
         mock_json_element.text = json.dumps(json_response)
-        
+
         mock_wait.until.return_value = mock_json_element
         mock_driver.find_element.return_value = mock_json_element
 
@@ -261,7 +271,7 @@ class TestOktaTokenExtractor:
         extractor.driver = mock_driver
 
         with patch("okta_token_automation.token_extractor.WebDriverWait", return_value=mock_wait):
-            with pytest.raises(OktaTokenExtractionError, match="No _oauth2_proxy header found"):
+            with pytest.raises(OktaTokenExtractionError, match="No _oauth2_proxy token found in response"):
                 extractor.extract_token_from_internal_service()
 
     def test_extract_token_invalid_json(self) -> None:
@@ -270,7 +280,7 @@ class TestOktaTokenExtractor:
         mock_wait = Mock()
         mock_json_element = Mock()
         mock_json_element.text = "invalid json"
-        
+
         mock_wait.until.return_value = mock_json_element
         mock_driver.find_element.return_value = mock_json_element
 
@@ -287,7 +297,7 @@ class TestOktaTokenExtractor:
         mock_wait = Mock()
         mock_json_element = Mock()
         mock_json_element.text = ""
-        
+
         mock_wait.until.return_value = mock_json_element
         mock_driver.find_element.return_value = mock_json_element
 
@@ -308,16 +318,16 @@ class TestOktaTokenExtractor:
 
             extractor = OktaTokenExtractor(config)
             test_token = "_oauth2_proxy=test-token-value"
-            
+
             extractor.save_token(test_token)
 
             # Verify file was created and contains correct content
             assert token_file.exists()
             assert token_file.read_text() == test_token
-            
+
             # Verify file permissions are restrictive
             assert oct(token_file.stat().st_mode)[-3:] == "600"
-            
+
             # Verify environment variable was set
             assert os.environ["TEST_OKTA_COOKIE"] == test_token
 
@@ -327,7 +337,7 @@ class TestOktaTokenExtractor:
         config.TOKEN_FILE = Path("/nonexistent/directory/token")
 
         extractor = OktaTokenExtractor(config)
-        
+
         with pytest.raises(OktaTokenExtractionError, match="Failed to save token"):
             extractor.save_token("test-token")
 
@@ -352,7 +362,7 @@ class TestOktaTokenExtractor:
         """Test cleanup handles driver quit errors gracefully."""
         mock_driver = Mock()
         mock_driver.quit.side_effect = WebDriverException("Quit failed")
-        
+
         extractor = OktaTokenExtractor()
         extractor.driver = mock_driver
 
@@ -367,7 +377,7 @@ class TestOktaTokenExtractor:
     @patch.object(OktaTokenExtractor, "save_token")
     @patch.object(OktaTokenExtractor, "cleanup")
     @patch("time.sleep")
-    def test_run_success(self, mock_sleep, mock_cleanup, mock_save, mock_extract, 
+    def test_run_success(self, mock_sleep, mock_cleanup, mock_save, mock_extract,
                         mock_mfa, mock_login, mock_setup) -> None:
         """Test successful complete run."""
         mock_extract.return_value = "test-token"
@@ -391,7 +401,7 @@ class TestOktaTokenExtractor:
         mock_setup.side_effect = OktaTokenExtractionError("Setup failed")
 
         extractor = OktaTokenExtractor()
-        
+
         with pytest.raises(OktaTokenExtractionError):
             extractor.run()
 
@@ -400,7 +410,7 @@ class TestOktaTokenExtractor:
     def test_context_manager(self) -> None:
         """Test context manager functionality."""
         extractor = OktaTokenExtractor()
-        
+
         with extractor as ctx_extractor:
             assert ctx_extractor is extractor
 
@@ -411,9 +421,9 @@ class TestOktaTokenExtractor:
     def test_context_manager_cleanup_on_exception(self, mock_cleanup) -> None:
         """Test context manager calls cleanup on exception."""
         extractor = OktaTokenExtractor()
-        
+
         with pytest.raises(ValueError):
             with extractor:
                 raise ValueError("Test exception")
 
-        mock_cleanup.assert_called_once() 
+        mock_cleanup.assert_called_once()

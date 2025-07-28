@@ -16,10 +16,7 @@ class Config:
 
     def __init__(self) -> None:
         """Initialize configuration with environment variables and defaults."""
-        # Okta/Company URLs
-        self.OKTA_LOGIN_URL: str = os.getenv(
-            "OKTA_LOGIN_URL", "https://tatari.okta.com"
-        )
+        # URLs
         self.HTTPBIN_URL: str = os.getenv(
             "HTTPBIN_URL", "https://httpbin.ops.tatari.dev/headers"
         )
@@ -49,9 +46,6 @@ class Config:
 
     def validate(self) -> None:
         """Validate configuration settings."""
-        if not self.OKTA_LOGIN_URL:
-            raise ValueError("OKTA_LOGIN_URL cannot be empty")
-
         if not self.HTTPBIN_URL:
             raise ValueError("HTTPBIN_URL cannot be empty")
 
@@ -68,7 +62,6 @@ class Config:
         """Return string representation of config (without sensitive data)."""
         return (
             f"Config("
-            f"OKTA_LOGIN_URL='{self.OKTA_LOGIN_URL}', "
             f"HTTPBIN_URL='{self.HTTPBIN_URL}', "
             f"HEADLESS={self.HEADLESS}, "
             f"BROWSER_TIMEOUT={self.BROWSER_TIMEOUT}, "

@@ -92,10 +92,10 @@ class OktaTokenExtractor:
         if not self.driver:
             raise OktaTokenExtractionError("Driver not initialized")
 
-        print("🔄 Navigating to Okta login...")
-        self.logger.debug("Navigating to Okta login URL: %s", self.config.OKTA_LOGIN_URL)
+        print("🔄 Navigating to httpbin (will redirect to Okta)...")
+        self.logger.debug("Navigating to httpbin URL: %s", self.config.HTTPBIN_URL)
         try:
-            self.driver.get(self.config.OKTA_LOGIN_URL)
+            self.driver.get(self.config.HTTPBIN_URL)
             self.logger.debug("Successfully navigated to: %s", self.driver.current_url)
 
             # Wait for login form - try multiple possible selectors
@@ -185,7 +185,7 @@ class OktaTokenExtractor:
 
         except TimeoutException:
             raise OktaTokenExtractionError(
-                f"Timeout waiting for Okta login page after {self.config.BROWSER_TIMEOUT}s"
+                f"Timeout waiting for login page after {self.config.BROWSER_TIMEOUT}s"
             )
         except NoSuchElementException as e:
             raise OktaTokenExtractionError(f"Could not find login form elements: {e}")
@@ -531,18 +531,11 @@ class OktaTokenExtractor:
             self.setup_driver()
             self.logger.debug("Driver setup completed")
 
-                        # Check if we can access the protected resource directly (already authenticated)
-            if self.check_if_already_authenticated():
-                self.logger.info("Already authenticated, skipping login flow")
-                print("✅ Already authenticated, skipping login...")
-                # We're already at httpbin from the auth check, so we can extract directly
-                self.logger.debug("Already at httpbin, proceeding to token extraction")
-            else:
-                self.login_to_okta()
-                self.logger.debug("Login completed")
+            self.login_to_okta()
+            self.logger.debug("Login completed")
 
-                self.handle_mfa()
-                self.logger.debug("MFA completed")
+            self.handle_mfa()
+            self.logger.debug("MFA completed")
 
             # Small delay to ensure full authentication
             self.logger.debug("Waiting 2 seconds for authentication to settle")
@@ -576,7 +569,7 @@ class OktaTokenExtractor:
         finally:
             self.cleanup()
 
-        def check_if_already_authenticated(self) -> bool:
+    def check_if_already_authenticated(self) -> bool:
         """Check if we can access the protected httpbin resource without login.
 
         Returns:

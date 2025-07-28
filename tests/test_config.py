@@ -15,18 +15,19 @@ class TestConfig:
 
     def test_default_config(self) -> None:
         """Test default configuration values."""
-        config = Config()
+        # Clear environment variables that might affect defaults
+        with patch.dict(os.environ, {}, clear=True):
+            config = Config()
 
-        assert config.OKTA_LOGIN_URL == "https://tatari.okta.com"
-        assert config.HTTPBIN_URL == "https://httpbin.ops.tatari.dev/headers"
-        assert config.HEADLESS is False
-        assert config.BROWSER_TIMEOUT == 60
-        assert config.IMPLICIT_WAIT == 10
-        assert config.MFA_TIMEOUT == 120
-        assert config.TOKEN_ENV_VAR == "OKTA_COOKIE"
-        assert config.OKTA_USERNAME == ""
-        assert config.CHROME_BINARY_PATH is None
-        assert config.CHROMEDRIVER_PATH is None
+            assert config.HTTPBIN_URL == "https://httpbin.ops.tatari.dev/headers"
+            assert config.HEADLESS is False
+            assert config.BROWSER_TIMEOUT == 60
+            assert config.IMPLICIT_WAIT == 10
+            assert config.MFA_TIMEOUT == 120
+            assert config.TOKEN_ENV_VAR == "OKTA_COOKIE"
+            assert config.OKTA_USERNAME == ""
+            assert config.CHROME_BINARY_PATH is None
+            assert config.CHROMEDRIVER_PATH is None
 
     def test_token_file_default(self) -> None:
         """Test default token file path."""
@@ -125,15 +126,17 @@ class TestConfig:
 
     def test_repr_without_username(self) -> None:
         """Test string representation without username."""
-        config = Config()
-        repr_str = repr(config)
+        # Clear environment to ensure clean test
+        with patch.dict(os.environ, {}, clear=True):
+            config = Config()
+            repr_str = repr(config)
 
-        assert "Config(" in repr_str
-        assert "OKTA_LOGIN_URL='https://tatari.okta.com'" in repr_str
-        assert "HTTPBIN_URL='https://httpbin.ops.tatari.dev/headers'" in repr_str
-        assert "HEADLESS=False" in repr_str
-        assert "BROWSER_TIMEOUT=60" in repr_str
-        assert "OKTA_USERNAME=''" in repr_str
+            assert "Config(" in repr_str
+            assert "OKTA_LOGIN_URL='https://tatari.okta.com'" in repr_str
+            assert "HTTPBIN_URL='https://httpbin.ops.tatari.dev/headers'" in repr_str
+            assert "HEADLESS=False" in repr_str
+            assert "BROWSER_TIMEOUT=60" in repr_str
+            assert "OKTA_USERNAME=''" in repr_str
 
     @patch.dict(os.environ, {"OKTA_USERNAME": "test.user@example.com"})
     def test_repr_with_username_masked(self) -> None:
