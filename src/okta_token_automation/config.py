@@ -1,5 +1,6 @@
 """Configuration module for Okta token automation."""
 
+import logging
 import os
 from pathlib import Path
 from typing import Optional
@@ -41,6 +42,10 @@ class Config:
         # Browser binary paths (optional)
         self.CHROME_BINARY_PATH: Optional[str] = os.getenv("CHROME_BINARY_PATH")
         self.CHROMEDRIVER_PATH: Optional[str] = os.getenv("CHROMEDRIVER_PATH")
+
+        # Logging configuration
+        self.LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+        self.LOG_FILE: Path = Path(os.getenv("LOG_FILE", os.path.expanduser("~/.local/share/okta-yoink/okta-yoink.log")))
 
     def validate(self) -> None:
         """Validate configuration settings."""

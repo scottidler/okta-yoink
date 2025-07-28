@@ -41,7 +41,7 @@ dev = [
 ]
 
 [project.scripts]
-okta-token = "okta_token_automation.main:main"
+okta-yoink = "okta_token_automation.main:main"
 
 [project.urls]
 Homepage = "https://github.com/yourusername/okta-token-automation"
@@ -106,4 +106,4 @@ module = [
     "selenium.*",
     "webdriver_manager.*",
 ]
-ignore_missing_imports = true 
+ignore_missing_imports = true

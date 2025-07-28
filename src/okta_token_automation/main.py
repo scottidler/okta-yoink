@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Main entry point for Okta token automation."""
 
+import logging
 import sys
 from typing import Optional
 
@@ -8,16 +9,35 @@ from .config import Config
 from .token_extractor import OktaTokenExtractor, OktaTokenExtractionError
 
 
+def setup_logging(config: Config) -> None:
+    """Setup logging configuration."""
+    # Ensure log directory exists
+    config.LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    logging.basicConfig(
+        level=getattr(logging, config.LOG_LEVEL.upper()),
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(config.LOG_FILE),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+
+
 def main() -> int:
     """Main entry point for the application.
-    
+
     Returns:
         Exit code: 0 for success, 1 for failure.
     """
     try:
         # Initialize configuration
         config = Config()
-        
+        setup_logging(config)
+
+        logger = logging.getLogger(__name__)
+        logger.info("Starting Okta token extraction...")
+
         # Run token extraction
         with OktaTokenExtractor(config) as extractor:
             token = extractor.run()
@@ -45,4 +65,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main()) 
+    sys.exit(main())
