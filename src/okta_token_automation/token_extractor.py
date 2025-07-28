@@ -5,9 +5,10 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple, List
 
 import requests
+from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.common.exceptions import (
     NoSuchElementException,
@@ -102,93 +103,157 @@ class OktaTokenExtractor:
             self.driver.get(self.config.HTTPBIN_URL)
             self.logger.debug("Successfully navigated to: %s", self.driver.current_url)
 
-            # Wait for login form - try multiple possible selectors
-            username_field = None
-            password_field = None
-
-                                    # Try to find username field with various selectors
-            for selector in [
-                (By.ID, "okta-signin-username"),
-                (By.NAME, "username"),
-                (By.NAME, "identifier"),
-                (By.CSS_SELECTOR, "input[type='text']"),
-                (By.CSS_SELECTOR, "input[type='email']"),
-                (By.CSS_SELECTOR, "input[autocomplete='username']"),
-                (By.CSS_SELECTOR, "input[autocomplete='email']"),
-                (By.XPATH, "//input[contains(@placeholder, 'Username') or contains(@placeholder, 'username')]"),
-                (By.XPATH, "//label[contains(text(), 'Username')]/following-sibling::input"),
-                (By.XPATH, "//label[contains(text(), 'Username')]/..//input"),
-                # Very generic - first text input on page
-                (By.XPATH, "(//input[@type='text'])[1]"),
-                (By.XPATH, "(//input[not(@type) or @type='text'])[1]")
-            ]:
-                try:
-                    self.logger.debug("Trying to find username field with selector: %s", selector)
-                    username_field = WebDriverWait(self.driver, 10).until(
-                        EC.presence_of_element_located(selector)
+            # Wait for redirect to Okta and login form to appear
+            print("🔄 Waiting for redirect to Okta login page...")
+            try:
+                # Wait for URL to contain 'okta' and for login form elements to be present
+                WebDriverWait(self.driver, 15).until(
+                    lambda driver: (
+                        'okta' in driver.current_url.lower() and
+                        (driver.find_elements(By.TAG_NAME, "input") or
+                         driver.find_elements(By.TAG_NAME, "form"))
                     )
-                    print(f"✅ Found username field using: {selector}")
-                    self.logger.debug("Successfully found username field")
-                    break
+                )
+                print(f"✅ Redirected to Okta: {self.driver.current_url}")
+
+                # Additional wait for form elements to be fully loaded
+                time.sleep(2)
+
+            except TimeoutException:
+                print(f"⚠️  Timeout waiting for Okta redirect. Current URL: {self.driver.current_url}")
+                # Continue anyway, might still work
+
+            # Debug: Print page title and current URL
+            print(f"🔍 Page title: {self.driver.title}")
+            print(f"🔍 Current URL: {self.driver.current_url}")
+
+            # Debug: Look for any input elements on the page
+            all_inputs = self.driver.find_elements(By.TAG_NAME, "input")
+            print(f"🔍 Found {len(all_inputs)} input elements on page:")
+            for i, input_elem in enumerate(all_inputs):
+                try:
+                    input_type = input_elem.get_attribute("type") or "text"
+                    input_name = input_elem.get_attribute("name") or "no-name"
+                    input_id = input_elem.get_attribute("id") or "no-id"
+                    input_placeholder = input_elem.get_attribute("placeholder") or "no-placeholder"
+                    input_autocomplete = input_elem.get_attribute("autocomplete") or "no-autocomplete"
+                    input_class = input_elem.get_attribute("class") or "no-class"
+                    print(f"  Input {i}: type='{input_type}', name='{input_name}', id='{input_id}', placeholder='{input_placeholder}', autocomplete='{input_autocomplete}', class='{input_class}'")
                 except Exception as e:
-                    self.logger.debug("Failed to find username field with selector %s: %s", selector, e)
-                    continue
+                    print(f"  Input {i}: Error getting attributes: {e}")
+
+            # Now try to find the username field - we know from debug it's name='identifier'
+            username_field = None
+
+            print("🔍 Looking for username field...")
+            try:
+                # First try the exact selector we know works from the debug output
+                username_field = self.driver.find_element(By.NAME, "identifier")
+                print("✅ Found username field with name='identifier'")
+            except Exception as e:
+                print(f"❌ Failed to find by name='identifier': {e}")
+
+                # Try other approaches
+                selectors_to_try = [
+                    (By.CSS_SELECTOR, "input[name='identifier']"),
+                    (By.CSS_SELECTOR, "input[autocomplete='username']"),
+                    (By.CSS_SELECTOR, "input[type='text']"),
+                    (By.XPATH, "//input[@name='identifier']"),
+                    (By.XPATH, "//input[@autocomplete='username']"),
+                ]
+
+                for selector_type, selector_value in selectors_to_try:
+                    try:
+                        print(f"🔍 Trying selector: {selector_type} = '{selector_value}'")
+                        username_field = self.driver.find_element(selector_type, selector_value)
+                        print(f"✅ Found username field using: {selector_type} = '{selector_value}'")
+                        break
+                    except Exception as ex:
+                        print(f"❌ Failed: {ex}")
+                        continue
+
+            if not username_field:
+                # Last resort - get the first text input we found in debug
+                try:
+                    all_inputs = self.driver.find_elements(By.TAG_NAME, "input")
+                    for input_elem in all_inputs:
+                        if input_elem.get_attribute("type") == "text":
+                            username_field = input_elem
+                            print("✅ Found username field as first text input")
+                            break
+                except Exception as e:
+                    print(f"❌ Last resort failed: {e}")
+
+            if not username_field:
+                # Use BeautifulSoup to analyze the DOM and find the right selectors
+                print("🔍 Using BeautifulSoup to analyze DOM...")
+                username_field = self._find_element_with_soup()
 
             if not username_field:
                 raise OktaTokenExtractionError("Could not find username field with any known selector")
 
-            # Try to find password field
-            for selector in [
-                (By.ID, "okta-signin-password"),
-                (By.NAME, "password"),
-                (By.CSS_SELECTOR, "input[type='password']"),
-                (By.XPATH, "//input[contains(@placeholder, 'Password') or contains(@placeholder, 'password')]")
-            ]:
-                try:
-                    password_field = self.driver.find_element(*selector)
-                    print(f"✅ Found password field using: {selector}")
-                    break
-                except:
-                    continue
-
-            if not password_field:
-                raise OktaTokenExtractionError("Could not find password field with any known selector")
-
-            # Get credentials from user or environment
+            # Get username from environment or prompt user
             if not self.config.OKTA_USERNAME:
                 username = input("Enter your Okta username: ")
             else:
                 username = self.config.OKTA_USERNAME
+                print(f"🔑 Using username from config: {username}")
 
-            password = input("Enter your Okta password: ")
-
-            # Fill credentials
+            # Fill username field
             username_field.clear()
             username_field.send_keys(username)
-            password_field.clear()
-            password_field.send_keys(password)
+            print("✅ Username filled")
 
-            # Find and click submit button
-            submit_button = None
-            for selector in [
-                (By.ID, "okta-signin-submit"),
-                (By.CSS_SELECTOR, "button[type='submit']"),
-                (By.CSS_SELECTOR, "input[type='submit']"),
-                (By.XPATH, "//button[contains(text(), 'Sign in') or contains(text(), 'Sign In') or contains(text(), 'Login')]")
-            ]:
-                try:
-                    submit_button = self.driver.find_element(*selector)
-                    print(f"✅ Found submit button using: {selector}")
-                    break
-                except:
-                    continue
+            # Check if there's a password field on the same page (common in newer Okta)
+            password_field = None
+            print("🔍 Looking for password field on same page...")
+
+            # Use our debug info - we know there's a password field: name='credentials.passcode', id='input36'
+            try:
+                password_field = self.driver.find_element(By.NAME, "credentials.passcode")
+                print("✅ Found password field with name='credentials.passcode'")
+            except Exception as e:
+                print(f"❌ Failed to find by name='credentials.passcode': {e}")
+
+                # Try other selectors
+                for selector_type, selector_value in [
+                    (By.CSS_SELECTOR, "input[type='password']"),
+                    (By.CSS_SELECTOR, "input[autocomplete='current-password']"),
+                    (By.XPATH, "//input[@type='password']"),
+                ]:
+                    try:
+                        password_field = self.driver.find_element(selector_type, selector_value)
+                        print(f"✅ Found password field using: {selector_type} = '{selector_value}'")
+                        break
+                    except Exception as ex:
+                        print(f"❌ Failed: {ex}")
+                        continue
+
+            # Fill password field if it exists
+            if password_field:
+                if not self.config.OKTA_PASSWORD:
+                    password = input("Enter your Okta password: ")
+                else:
+                    password = self.config.OKTA_PASSWORD
+                    print("🔑 Using password from config")
+
+                password_field.clear()
+                password_field.send_keys(password)
+                print("✅ Password filled")
+            else:
+                print("ℹ️  No password field found on this page")
+
+            # Now find and click submit button (after both fields are filled)
+            submit_button = self._find_submit_button_with_soup()
 
             if not submit_button:
                 raise OktaTokenExtractionError("Could not find submit button")
 
             submit_button.click()
-
-            print("✅ Credentials submitted")
+            if password_field:
+                print("✅ Username and password submitted, proceeding to MFA...")
+            else:
+                print("✅ Username submitted, proceeding to next step...")
 
         except TimeoutException:
             raise OktaTokenExtractionError(
@@ -212,37 +277,30 @@ class OktaTokenExtractor:
         self.logger.debug("Starting MFA handling, current URL: %s", self.driver.current_url)
 
         try:
-            # First, check if we're on an MFA selection page
-            time.sleep(2)  # Wait for page to load
-            self.logger.debug("After 2s wait, current URL: %s", self.driver.current_url)
+            # Wait for MFA page to load properly
+            print("🔄 Waiting for MFA page to load...")
 
-            # Look for YubiKey/Security Key option and auto-select it
-            yubikey_selectors = [
-                # Most specific selectors first
-                (By.CSS_SELECTOR, "[data-se='webauthn'] button"),
-                (By.CSS_SELECTOR, "[data-se='webauthn'] .select-factor"),
-                (By.XPATH, "//div[@data-se='webauthn']//button"),
-                # Text-based selectors
-                (By.XPATH, "//button[contains(text(), 'Select') and ancestor::*[contains(text(), 'Security Key')]]"),
-                (By.XPATH, "//button[contains(text(), 'Select') and ancestor::*[contains(text(), 'Biometric')]]"),
-                (By.XPATH, "//div[contains(text(), 'Security Key or Biometric')]//following::button[contains(text(), 'Select')]"),
-                (By.XPATH, "//div[contains(text(), 'Security Key')]//following::button[contains(text(), 'Select')]"),
-                # Generic fallbacks
-                (By.XPATH, "//button[contains(text(), 'Security Key') or contains(text(), 'Biometric')]"),
-                (By.CSS_SELECTOR, "button[data-se='webauthn']"),
-                (By.XPATH, "//span[contains(text(), 'Security Key')]//ancestor::div//button"),
-            ]
-
-            yubikey_button = None
-            for selector in yubikey_selectors:
-                try:
-                    yubikey_button = WebDriverWait(self.driver, 5).until(
-                        EC.element_to_be_clickable(selector)
+            # Wait for URL to change to MFA/verify page or for MFA elements to appear
+            try:
+                WebDriverWait(self.driver, 10).until(
+                    lambda driver: (
+                        'verify' in driver.current_url.lower() or
+                        'mfa' in driver.current_url.lower() or
+                        'challenge' in driver.current_url.lower() or
+                        driver.find_elements(By.XPATH, "//*[contains(text(), 'Security Key') or contains(text(), 'Biometric') or contains(text(), 'Authenticator')]")
                     )
-                    print(f"✅ Found YubiKey option using: {selector}")
-                    break
-                except:
-                    continue
+                )
+                print(f"✅ MFA page loaded: {self.driver.current_url}")
+            except TimeoutException:
+                print(f"⚠️  Timeout waiting for MFA page. Current URL: {self.driver.current_url}")
+                # Continue anyway, might still work
+
+            # Additional wait for MFA elements to be fully rendered
+            time.sleep(3)
+            self.logger.debug("After MFA page load wait, current URL: %s", self.driver.current_url)
+
+            # Look for YubiKey/Security Key option using BeautifulSoup
+            yubikey_button = self._find_mfa_options_with_soup()
 
             if yubikey_button:
                 print("🔑 Automatically selecting YubiKey/Security Key option...")
@@ -251,16 +309,38 @@ class OktaTokenExtractor:
 
             print("👆 Please complete MFA (YubiKey touch/PIN) in the browser window")
 
-            # Wait for MFA completion by checking URL change
+            # Wait for MFA completion by checking for successful redirect to httpbin
             self.logger.debug("Waiting for MFA completion, timeout: %s seconds", self.config.MFA_TIMEOUT)
-            WebDriverWait(self.driver, self.config.MFA_TIMEOUT).until(
-                lambda driver: (
-                    "mfa" not in driver.current_url.lower()
-                    and "challenge" not in driver.current_url.lower()
-                    and "login" not in driver.current_url.lower()
-                    and "verify" not in driver.current_url.lower()
-                )
-            )
+
+            start_time = time.time()
+            mfa_completed = False
+
+            while time.time() - start_time < self.config.MFA_TIMEOUT:
+                current_url = self.driver.current_url
+                print(f"🔍 Current URL: {current_url}")
+
+                # Check if we've successfully reached httpbin (authentication complete)
+                if "httpbin.ops.tatari.dev" in current_url:
+                    print("✅ Successfully redirected to httpbin - authentication complete!")
+                    mfa_completed = True
+                    break
+
+                # Check if we're back at login page (MFA failed or session expired)
+                if any(indicator in current_url.lower() for indicator in ["signin", "login", "oauth2/default/v1/authorize"]):
+                    # Check if there are username/password fields (indicates we're back at login)
+                    try:
+                        username_field = self.driver.find_element(By.NAME, "identifier")
+                        print("❌ Redirected back to login page - MFA may have failed or session expired")
+                        raise OktaTokenExtractionError("MFA failed - redirected back to login page")
+                    except:
+                        # No username field found, might be a different page
+                        pass
+
+                # Still in MFA process, wait a bit more
+                time.sleep(2)
+
+            if not mfa_completed:
+                raise OktaTokenExtractionError(f"MFA timeout after {self.config.MFA_TIMEOUT}s - never reached httpbin")
             print("✅ MFA completed successfully")
             self.logger.debug("MFA completed, final URL: %s", self.driver.current_url)
 
@@ -328,6 +408,10 @@ class OktaTokenExtractor:
             # Method 1: Look for _oauth2_proxy in Cookie header (most common)
             cookie_header = headers.get("Cookie", "")
             if cookie_header:
+                # Handle case where Cookie header might be a list
+                if isinstance(cookie_header, list):
+                    cookie_header = "; ".join(cookie_header)
+
                 # Parse cookies to find _oauth2_proxy
                 for cookie in cookie_header.split(";"):
                     cookie = cookie.strip()
@@ -429,6 +513,10 @@ class OktaTokenExtractor:
             # Method 1: Look for _oauth2_proxy in Cookie header (most common)
             cookie_header = headers.get("Cookie", "")
             if cookie_header:
+                # Handle case where Cookie header might be a list
+                if isinstance(cookie_header, list):
+                    cookie_header = "; ".join(cookie_header)
+
                 # Parse cookies to find _oauth2_proxy
                 for cookie in cookie_header.split(";"):
                     cookie = cookie.strip()
@@ -505,11 +593,8 @@ class OktaTokenExtractor:
             # Set restrictive permissions on token file
             self.config.TOKEN_FILE.chmod(0o600)
 
-            # Set environment variable for current session
-            os.environ[self.config.TOKEN_ENV_VAR] = token
-
             print(f"✅ Token saved to {self.config.TOKEN_FILE}")
-            print(f"✅ Environment variable {self.config.TOKEN_ENV_VAR} set")
+            print(f"ℹ️  Use 'export {self.config.TOKEN_ENV_VAR}=$(cat {self.config.TOKEN_FILE})' to set in your shell")
 
         except Exception as e:
             raise OktaTokenExtractionError(f"Failed to save token: {e}")
@@ -635,3 +720,249 @@ class OktaTokenExtractor:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         """Context manager exit - cleanup resources."""
         self.cleanup()
+
+    def _find_element_with_soup(self) -> Optional[object]:
+        """Use BeautifulSoup to analyze the DOM and find form elements.
+
+        Returns:
+            The Selenium WebElement if found, None otherwise.
+        """
+        if not self.driver:
+            return None
+
+        try:
+            # Get the page source and parse with BeautifulSoup
+            page_source = self.driver.page_source
+            soup = BeautifulSoup(page_source, 'html.parser')
+
+            print("🔍 BeautifulSoup DOM Analysis:")
+            print(f"   Page title: {soup.title.string if soup.title else 'No title'}")
+
+            # Find all input elements
+            inputs = soup.find_all('input')
+            print(f"   Found {len(inputs)} input elements:")
+
+            username_candidates = []
+            password_candidates = []
+
+            for i, input_elem in enumerate(inputs):
+                input_type = input_elem.get('type', 'text')
+                input_name = input_elem.get('name', '')
+                input_id = input_elem.get('id', '')
+                input_class = input_elem.get('class', [])
+                input_placeholder = input_elem.get('placeholder', '')
+                input_autocomplete = input_elem.get('autocomplete', '')
+
+                print(f"     Input {i}: type='{input_type}', name='{input_name}', id='{input_id}'")
+                print(f"                class='{input_class}', placeholder='{input_placeholder}'")
+                print(f"                autocomplete='{input_autocomplete}'")
+
+                # Identify username field candidates
+                if (input_type in ['text', 'email'] or
+                    'username' in input_autocomplete.lower() or
+                    'identifier' in input_name.lower() or
+                    'username' in input_name.lower() or
+                    'email' in input_name.lower()):
+                    username_candidates.append((input_name, input_id, input_type, input_autocomplete))
+
+                # Identify password field candidates
+                if (input_type == 'password' or
+                    'password' in input_autocomplete.lower() or
+                    'passcode' in input_name.lower()):
+                    password_candidates.append((input_name, input_id, input_type, input_autocomplete))
+
+            print(f"   Username candidates: {username_candidates}")
+            print(f"   Password candidates: {password_candidates}")
+
+            # Try to find the username field using the candidates
+            for name, elem_id, elem_type, autocomplete in username_candidates:
+                selectors_to_try = []
+                if name:
+                    selectors_to_try.append((By.NAME, name))
+                if elem_id:
+                    selectors_to_try.append((By.ID, elem_id))
+
+                for selector_type, selector_value in selectors_to_try:
+                    try:
+                        element = self.driver.find_element(selector_type, selector_value)
+                        print(f"✅ BeautifulSoup found username field: {selector_type} = '{selector_value}'")
+                        return element
+                    except Exception as e:
+                        print(f"❌ BeautifulSoup selector failed: {selector_type} = '{selector_value}': {e}")
+                        continue
+
+            return None
+
+        except Exception as e:
+            print(f"❌ BeautifulSoup analysis failed: {e}")
+            return None
+
+    def _find_submit_button_with_soup(self) -> Optional[object]:
+        """Use BeautifulSoup to find submit button.
+
+        Returns:
+            The Selenium WebElement if found, None otherwise.
+        """
+        if not self.driver:
+            return None
+
+        try:
+            page_source = self.driver.page_source
+            soup = BeautifulSoup(page_source, 'html.parser')
+
+            print("🔍 BeautifulSoup looking for submit button...")
+
+            # Find submit buttons and regular buttons
+            submit_candidates = []
+
+            # Look for input[type="submit"]
+            submit_inputs = soup.find_all('input', {'type': 'submit'})
+            for input_elem in submit_inputs:
+                input_id = input_elem.get('id', '')
+                input_class = input_elem.get('class', [])
+                input_value = input_elem.get('value', '')
+                submit_candidates.append(('input', 'submit', input_id, input_class, input_value))
+
+            # Look for button elements
+            buttons = soup.find_all('button')
+            for button in buttons:
+                button_type = button.get('type', 'button')
+                button_id = button.get('id', '')
+                button_class = button.get('class', [])
+                button_text = button.get_text(strip=True)
+                submit_candidates.append(('button', button_type, button_id, button_class, button_text))
+
+            print(f"   Found {len(submit_candidates)} button candidates:")
+            for i, (tag, btn_type, btn_id, btn_class, btn_text) in enumerate(submit_candidates):
+                print(f"     Button {i}: {tag}[type='{btn_type}'], id='{btn_id}', class='{btn_class}', text='{btn_text}'")
+
+            # Try to find the submit button using the candidates
+            for tag, btn_type, btn_id, btn_class, btn_text in submit_candidates:
+                selectors_to_try = []
+
+                if btn_id:
+                    selectors_to_try.append((By.ID, btn_id))
+                if btn_type == 'submit':
+                    if tag == 'input':
+                        selectors_to_try.append((By.CSS_SELECTOR, "input[type='submit']"))
+                    else:
+                        selectors_to_try.append((By.CSS_SELECTOR, "button[type='submit']"))
+                if 'button' in ' '.join(btn_class).lower() and 'primary' in ' '.join(btn_class).lower():
+                    selectors_to_try.append((By.CSS_SELECTOR, ".button.button-primary"))
+
+                for selector_type, selector_value in selectors_to_try:
+                    try:
+                        element = self.driver.find_element(selector_type, selector_value)
+                        print(f"✅ BeautifulSoup found submit button: {selector_type} = '{selector_value}'")
+                        return element
+                    except Exception as e:
+                        print(f"❌ Submit button selector failed: {selector_type} = '{selector_value}': {e}")
+                        continue
+
+            return None
+
+        except Exception as e:
+            print(f"❌ BeautifulSoup submit button analysis failed: {e}")
+            return None
+
+    def _find_mfa_options_with_soup(self) -> Optional[object]:
+        """Use BeautifulSoup to find MFA/YubiKey options.
+
+        Returns:
+            The Selenium WebElement for YubiKey option if found, None otherwise.
+        """
+        if not self.driver:
+            return None
+
+        try:
+            page_source = self.driver.page_source
+            soup = BeautifulSoup(page_source, 'html.parser')
+
+            print("🔍 BeautifulSoup looking for MFA/YubiKey options...")
+            print(f"   Page title: {soup.title.string if soup.title else 'No title'}")
+            print(f"   Page contains 'Security Key': {'security key' in soup.get_text().lower()}")
+            print(f"   Page contains 'Biometric': {'biometric' in soup.get_text().lower()}")
+            print(f"   Page contains 'Authenticator': {'authenticator' in soup.get_text().lower()}")
+
+            # Look for elements that might contain MFA options
+            mfa_candidates = []
+
+            # Look for buttons with MFA-related text
+            buttons = soup.find_all('button')
+            print(f"   Found {len(buttons)} buttons on MFA page")
+
+            for button in buttons:
+                button_text = button.get_text(strip=True).lower()
+                button_id = button.get('id', '')
+                button_class = button.get('class', [])
+                data_attrs = {k: v for k, v in button.attrs.items() if k.startswith('data-')}
+
+                print(f"     Button: text='{button_text}', id='{button_id}', class='{button_class}', data='{data_attrs}'")
+
+                if any(keyword in button_text for keyword in ['security key', 'biometric', 'yubikey', 'authenticator', 'select', 'webauthn']):
+                    mfa_candidates.append(('button', button_id, button_class, button_text, data_attrs))
+
+            # Look for divs with MFA-related content
+            divs = soup.find_all('div')
+            print(f"   Found {len(divs)} divs on MFA page")
+
+            mfa_related_divs = []
+            for div in divs:
+                div_text = div.get_text(strip=True).lower()
+                div_id = div.get('id', '')
+                div_class = div.get('class', [])
+                data_attrs = {k: v for k, v in div.attrs.items() if k.startswith('data-')}
+
+                if any(keyword in div_text for keyword in ['security key', 'biometric', 'yubikey', 'authenticator', 'webauthn']):
+                    mfa_related_divs.append(div)
+                    print(f"     MFA div: text='{div_text[:100]}...', id='{div_id}', class='{div_class}', data='{data_attrs}'")
+
+                    # Look for buttons within this div
+                    inner_buttons = div.find_all('button')
+                    for inner_button in inner_buttons:
+                        inner_text = inner_button.get_text(strip=True).lower()
+                        inner_id = inner_button.get('id', '')
+                        inner_class = inner_button.get('class', [])
+                        inner_data = {k: v for k, v in inner_button.attrs.items() if k.startswith('data-')}
+                        print(f"       Inner button: text='{inner_text}', id='{inner_id}', class='{inner_class}'")
+                        mfa_candidates.append(('div_button', inner_id, inner_class, inner_text, inner_data))
+
+            print(f"   Found {len(mfa_related_divs)} MFA-related divs")
+
+            print(f"   Found {len(mfa_candidates)} MFA candidates:")
+            for i, (elem_type, elem_id, elem_class, elem_text, data_attrs) in enumerate(mfa_candidates):
+                print(f"     MFA {i}: {elem_type}, id='{elem_id}', class='{elem_class}'")
+                print(f"              text='{elem_text}', data='{data_attrs}'")
+
+            # Try to find the YubiKey/Security Key option
+            for elem_type, elem_id, elem_class, elem_text, data_attrs in mfa_candidates:
+                selectors_to_try = []
+
+                if elem_id:
+                    selectors_to_try.append((By.ID, elem_id))
+
+                # Try data-se attribute (common in Okta)
+                if 'data-se' in data_attrs:
+                    selectors_to_try.append((By.CSS_SELECTOR, f"[data-se='{data_attrs['data-se']}']"))
+                    if elem_type in ['button', 'div_button']:
+                        selectors_to_try.append((By.CSS_SELECTOR, f"[data-se='{data_attrs['data-se']}'] button"))
+
+                # Try class-based selectors
+                if elem_class and any('select' in cls.lower() for cls in elem_class):
+                    class_selector = '.'.join(elem_class)
+                    selectors_to_try.append((By.CSS_SELECTOR, f".{class_selector}"))
+
+                for selector_type, selector_value in selectors_to_try:
+                    try:
+                        element = self.driver.find_element(selector_type, selector_value)
+                        print(f"✅ BeautifulSoup found MFA option: {selector_type} = '{selector_value}'")
+                        return element
+                    except Exception as e:
+                        print(f"❌ MFA selector failed: {selector_type} = '{selector_value}': {e}")
+                        continue
+
+            return None
+
+        except Exception as e:
+            print(f"❌ BeautifulSoup MFA analysis failed: {e}")
+            return None

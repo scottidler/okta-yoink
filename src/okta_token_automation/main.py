@@ -44,9 +44,13 @@ def main() -> int:
 
         # Success message
         print("\n" + "=" * 50)
-        print("🎯 SUCCESS! Your CLI should now work with:")
+        print("🎯 SUCCESS! Token extracted and saved!")
+        print(f"📁 Token file: {config.TOKEN_FILE}")
+        print(f"🔧 To set environment variable in your current shell:")
         print(f"   export {config.TOKEN_ENV_VAR}=$(cat {config.TOKEN_FILE})")
-        print("   cargo run -- -o Engineering -m jan")
+        print(f"🚀 Or add this function to your ~/.zshrc:")
+        print(f"   okta-cookie() {{ export {config.TOKEN_ENV_VAR}=$(cat {config.TOKEN_FILE}); }}")
+        print(f"   Then use: okta-cookie")
         print("=" * 50)
 
         return 0

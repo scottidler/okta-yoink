@@ -28,13 +28,15 @@ class Config:
         self.MFA_TIMEOUT: int = int(os.getenv("MFA_TIMEOUT", "120"))
 
         # Token storage
-        self.TOKEN_FILE: Path = Path(
-            os.getenv("TOKEN_FILE", os.path.expanduser("~/.okta-cookie"))
-        )
+        token_file_env = os.getenv("TOKEN_FILE", "")
+        if not token_file_env:
+            token_file_env = "~/.okta-cookie"
+        self.TOKEN_FILE: Path = Path(os.path.expanduser(token_file_env))
         self.TOKEN_ENV_VAR: str = os.getenv("TOKEN_ENV_VAR", "OKTA_COOKIE")
 
         # User credentials (optional - can be entered interactively)
         self.OKTA_USERNAME: str = os.getenv("OKTA_USERNAME", "")
+        self.OKTA_PASSWORD: str = os.getenv("OKTA_PASSWORD", "")
 
         # Browser binary paths (optional)
         self.CHROME_BINARY_PATH: Optional[str] = os.getenv("CHROME_BINARY_PATH")
@@ -42,7 +44,10 @@ class Config:
 
         # Logging configuration
         self.LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
-        self.LOG_FILE: Path = Path(os.getenv("LOG_FILE", os.path.expanduser("~/.local/share/okta-yoink/okta-yoink.log")))
+        log_file_env = os.getenv("LOG_FILE", "")
+        if not log_file_env:
+            log_file_env = "~/.local/share/okta-yoink/okta-yoink.log"
+        self.LOG_FILE: Path = Path(os.path.expanduser(log_file_env))
 
     def validate(self) -> None:
         """Validate configuration settings."""
