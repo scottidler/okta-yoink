@@ -16,7 +16,7 @@ class TestConfig:
     def test_default_config(self) -> None:
         """Test default configuration values."""
         config = Config()
-        
+
         assert config.OKTA_LOGIN_URL == "https://tatari.okta.com"
         assert config.HTTPBIN_URL == "https://httpbin.ops.tatari.dev/headers"
         assert config.HEADLESS is False
@@ -31,7 +31,7 @@ class TestConfig:
     def test_token_file_default(self) -> None:
         """Test default token file path."""
         config = Config()
-        expected_path = Path(os.path.expanduser("~/.okta-token"))
+        expected_path = Path(os.path.expanduser("~/.okta-cookie"))
         assert config.TOKEN_FILE == expected_path
 
     @patch.dict(os.environ, {
@@ -50,7 +50,7 @@ class TestConfig:
     def test_environment_variable_override(self) -> None:
         """Test that environment variables override defaults."""
         config = Config()
-        
+
         assert config.OKTA_LOGIN_URL == "https://custom.okta.com"
         assert config.HTTPBIN_URL == "https://custom.httpbin.dev/headers"
         assert config.HEADLESS is True
@@ -127,7 +127,7 @@ class TestConfig:
         """Test string representation without username."""
         config = Config()
         repr_str = repr(config)
-        
+
         assert "Config(" in repr_str
         assert "OKTA_LOGIN_URL='https://tatari.okta.com'" in repr_str
         assert "HTTPBIN_URL='https://httpbin.ops.tatari.dev/headers'" in repr_str
@@ -140,7 +140,7 @@ class TestConfig:
         """Test string representation masks username."""
         config = Config()
         repr_str = repr(config)
-        
+
         assert "OKTA_USERNAME='***'" in repr_str
         assert "test.user@example.com" not in repr_str
 
@@ -156,4 +156,4 @@ class TestConfig:
             with patch.dict(os.environ, {"TOKEN_FILE": f"{temp_dir}/test-token"}):
                 config = Config()
                 assert str(config.TOKEN_FILE) == f"{temp_dir}/test-token"
-                assert config.TOKEN_FILE.is_absolute() 
+                assert config.TOKEN_FILE.is_absolute()

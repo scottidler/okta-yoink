@@ -18,7 +18,7 @@ class TestMain:
         # Setup mocks
         mock_config = Mock()
         mock_config.TOKEN_ENV_VAR = "OKTA_COOKIE"
-        mock_config.TOKEN_FILE = "/home/user/.okta-token"
+        mock_config.TOKEN_FILE = "/home/user/.okta-cookie"
         mock_config_class.return_value = mock_config
 
         mock_extractor = Mock()
@@ -34,7 +34,7 @@ class TestMain:
         mock_config_class.assert_called_once()
         mock_extractor_class.assert_called_once_with(mock_config)
         mock_extractor.run.assert_called_once()
-        
+
         # Verify success return code
         assert result == 0
 
@@ -107,7 +107,7 @@ class TestMain:
         """Test that main uses OktaTokenExtractor as context manager."""
         mock_config = Mock()
         mock_config.TOKEN_ENV_VAR = "OKTA_COOKIE"
-        mock_config.TOKEN_FILE = "/home/user/.okta-token"
+        mock_config.TOKEN_FILE = "/home/user/.okta-cookie"
         mock_config_class.return_value = mock_config
 
         mock_extractor = Mock()
@@ -121,4 +121,4 @@ class TestMain:
         # Verify context manager methods were called
         mock_extractor.__enter__.assert_called_once()
         mock_extractor.__exit__.assert_called_once()
-        assert result == 0 
+        assert result == 0

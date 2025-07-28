@@ -31,7 +31,7 @@ class Config:
 
         # Token storage
         self.TOKEN_FILE: Path = Path(
-            os.getenv("TOKEN_FILE", os.path.expanduser("~/.okta-token"))
+            os.getenv("TOKEN_FILE", os.path.expanduser("~/.okta-cookie"))
         )
         self.TOKEN_ENV_VAR: str = os.getenv("TOKEN_ENV_VAR", "OKTA_COOKIE")
 
@@ -70,4 +70,4 @@ class Config:
             f"TOKEN_FILE='{self.TOKEN_FILE}', "
             f"OKTA_USERNAME='{'***' if self.OKTA_USERNAME else ''}'"
             f")"
-        ) 
+        )
