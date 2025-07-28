@@ -4,15 +4,15 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from okta_token_automation.main import main
-from okta_token_automation.token_extractor import OktaTokenExtractionError
+from okta_yoink.main import main
+from okta_yoink.token_extractor import OktaTokenExtractionError
 
 
 class TestMain:
     """Test cases for main function."""
 
-    @patch("okta_token_automation.main.OktaTokenExtractor")
-    @patch("okta_token_automation.main.Config")
+    @patch("okta_yoink.main.OktaTokenExtractor")
+    @patch("okta_yoink.main.Config")
     def test_main_success(self, mock_config_class, mock_extractor_class) -> None:
         """Test successful main execution."""
         # Setup mocks
@@ -38,8 +38,8 @@ class TestMain:
         # Verify success return code
         assert result == 0
 
-    @patch("okta_token_automation.main.OktaTokenExtractor")
-    @patch("okta_token_automation.main.Config")
+    @patch("okta_yoink.main.OktaTokenExtractor")
+    @patch("okta_yoink.main.Config")
     def test_main_keyboard_interrupt(self, mock_config_class, mock_extractor_class) -> None:
         """Test main handles KeyboardInterrupt."""
         mock_config = Mock()
@@ -55,8 +55,8 @@ class TestMain:
 
         assert result == 1
 
-    @patch("okta_token_automation.main.OktaTokenExtractor")
-    @patch("okta_token_automation.main.Config")
+    @patch("okta_yoink.main.OktaTokenExtractor")
+    @patch("okta_yoink.main.Config")
     def test_main_token_extraction_error(self, mock_config_class, mock_extractor_class) -> None:
         """Test main handles OktaTokenExtractionError."""
         mock_config = Mock()
@@ -72,8 +72,8 @@ class TestMain:
 
         assert result == 1
 
-    @patch("okta_token_automation.main.OktaTokenExtractor")
-    @patch("okta_token_automation.main.Config")
+    @patch("okta_yoink.main.OktaTokenExtractor")
+    @patch("okta_yoink.main.Config")
     def test_main_unexpected_error(self, mock_config_class, mock_extractor_class) -> None:
         """Test main handles unexpected exceptions."""
         mock_config = Mock()
@@ -89,8 +89,8 @@ class TestMain:
 
         assert result == 1
 
-    @patch("okta_token_automation.main.OktaTokenExtractor")
-    @patch("okta_token_automation.main.Config")
+    @patch("okta_yoink.main.OktaTokenExtractor")
+    @patch("okta_yoink.main.Config")
     def test_main_config_validation_error(self, mock_config_class, mock_extractor_class) -> None:
         """Test main handles config validation errors."""
         mock_config_class.side_effect = ValueError("Invalid configuration")
@@ -101,8 +101,8 @@ class TestMain:
         # Extractor should not be called if config fails
         mock_extractor_class.assert_not_called()
 
-    @patch("okta_token_automation.main.OktaTokenExtractor")
-    @patch("okta_token_automation.main.Config")
+    @patch("okta_yoink.main.OktaTokenExtractor")
+    @patch("okta_yoink.main.Config")
     def test_main_context_manager_usage(self, mock_config_class, mock_extractor_class) -> None:
         """Test that main uses OktaTokenExtractor as context manager."""
         mock_config = Mock()

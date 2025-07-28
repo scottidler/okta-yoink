@@ -103,42 +103,64 @@ class OktaTokenExtractor:
             self.driver.get(self.config.HTTPBIN_URL)
             self.logger.debug("Successfully navigated to: %s", self.driver.current_url)
 
-            # Wait for redirect to Okta and login form to appear
-            print("🔄 Waiting for redirect to Okta login page...")
-            try:
-                # Wait for URL to contain 'okta' and for login form elements to be present
-                WebDriverWait(self.driver, 15).until(
-                    lambda driver: (
-                        'okta' in driver.current_url.lower() and
-                        (driver.find_elements(By.TAG_NAME, "input") or
-                         driver.find_elements(By.TAG_NAME, "form"))
-                    )
+            # Wait for the OAuth redirect to complete and login form to be ready
+            print("⏳ Waiting for Okta login page to load...")
+            self.logger.debug("Waiting for Okta domain in URL...")
+
+            # Wait until we're on an Okta domain (shorter timeout)
+            WebDriverWait(self.driver, 15).until(
+                lambda driver: "okta.com" in driver.current_url.lower()
+            )
+            self.logger.debug("Redirected to Okta domain: %s", self.driver.current_url)
+
+            # Wait for login form to be present (this is the real indicator we're ready)
+            print("⏳ Waiting for login form to appear...")
+            WebDriverWait(self.driver, 10).until(
+                EC.any_of(
+                    EC.presence_of_element_located((By.NAME, "identifier")),
+                    EC.presence_of_element_located((By.ID, "okta-signin-username")),
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='text']"))
                 )
-                print(f"✅ Redirected to Okta: {self.driver.current_url}")
+            )
 
-                # Additional wait for form elements to be fully loaded
-                time.sleep(2)
+            print("✅ Okta login form ready, filling credentials...")
 
-            except TimeoutException:
-                print(f"⚠️  Timeout waiting for Okta redirect. Current URL: {self.driver.current_url}")
-                # Continue anyway, might still work
+            # Wait for login form - try multiple possible selectors
+            username_field = None
+            password_field = None
 
-            # Debug: Print page title and current URL
-            print(f"🔍 Page title: {self.driver.title}")
-            print(f"🔍 Current URL: {self.driver.current_url}")
+                                                # Try to find username field - hardcoded known working selector first
+            print("🔍 Looking for username field...")
+            username_selectors = [
+                (By.NAME, "identifier"),  # ✅ HARDCODED - Name: identifier, Type: text
+                (By.ID, "input28"),  # ✅ HARDCODED - Current ID (may change)
+                (By.ID, "okta-signin-username"),  # Fallback for other Okta instances
+                (By.CSS_SELECTOR, "input[type='text'][name='identifier']"),  # Most specific
+                (By.CSS_SELECTOR, "input[type='text']")  # Generic fallback
+            ]
 
-            # Debug: Look for any input elements on the page
-            all_inputs = self.driver.find_elements(By.TAG_NAME, "input")
-            print(f"🔍 Found {len(all_inputs)} input elements on page:")
-            for i, input_elem in enumerate(all_inputs):
+            for selector in username_selectors:
                 try:
-                    input_type = input_elem.get_attribute("type") or "text"
-                    input_name = input_elem.get_attribute("name") or "no-name"
-                    input_id = input_elem.get_attribute("id") or "no-id"
-                    input_placeholder = input_elem.get_attribute("placeholder") or "no-placeholder"
-                    input_autocomplete = input_elem.get_attribute("autocomplete") or "no-autocomplete"
-                    input_class = input_elem.get_attribute("class") or "no-class"
-                    print(f"  Input {i}: type='{input_type}', name='{input_name}', id='{input_id}', placeholder='{input_placeholder}', autocomplete='{input_autocomplete}', class='{input_class}'")
+                    self.logger.debug("Trying to find username field with selector: %s", selector)
+                    username_field = WebDriverWait(self.driver, 10).until(
+                        EC.presence_of_element_located(selector)
+                    )
+                    # Log the actual element details for hardcoding
+                    element_id = username_field.get_attribute('id')
+                    element_name = username_field.get_attribute('name')
+                    element_class = username_field.get_attribute('class')
+                    element_type = username_field.get_attribute('type')
+
+                    print(f"🔍 USERNAME FIELD FOUND:")
+                    print(f"   Selector used: {selector}")
+                    print(f"   ID: {element_id}")
+                    print(f"   Name: {element_name}")
+                    print(f"   Class: {element_class}")
+                    print(f"   Type: {element_type}")
+
+                    self.logger.info("USERNAME FIELD - Selector: %s, ID: %s, Name: %s, Class: %s, Type: %s",
+                                   selector, element_id, element_name, element_class, element_type)
+                    break
                 except Exception as e:
                     print(f"  Input {i}: Error getting attributes: {e}")
 
@@ -192,59 +214,117 @@ class OktaTokenExtractor:
             if not username_field:
                 raise OktaTokenExtractionError("Could not find username field with any known selector")
 
-            # Get username from environment or prompt user
+            # Try to find password field - hardcoded known working selector first
+            print("🔍 Looking for password field...")
+            password_selectors = [
+                (By.NAME, "credentials.passcode"),  # ✅ HARDCODED - Name: credentials.passcode, Type: password
+                (By.ID, "input36"),  # ✅ HARDCODED - Current ID (may change)
+                (By.CSS_SELECTOR, "input.password-with-toggle"),  # ✅ HARDCODED - Class: password-with-toggle
+                (By.ID, "okta-signin-password"),  # Fallback for other Okta instances
+                (By.CSS_SELECTOR, "input[type='password']")  # Generic fallback
+            ]
+
+            for selector in password_selectors:
+                try:
+                    password_field = self.driver.find_element(*selector)
+                    # Log the actual element details for hardcoding
+                    element_id = password_field.get_attribute('id')
+                    element_name = password_field.get_attribute('name')
+                    element_class = password_field.get_attribute('class')
+                    element_type = password_field.get_attribute('type')
+
+                    print(f"🔍 PASSWORD FIELD FOUND:")
+                    print(f"   Selector used: {selector}")
+                    print(f"   ID: {element_id}")
+                    print(f"   Name: {element_name}")
+                    print(f"   Class: {element_class}")
+                    print(f"   Type: {element_type}")
+
+                    self.logger.info("PASSWORD FIELD - Selector: %s, ID: %s, Name: %s, Class: %s, Type: %s",
+                                   selector, element_id, element_name, element_class, element_type)
+                    break
+                except Exception as e:
+                    self.logger.debug("Failed to find password field with selector %s: %s", selector, e)
+                    continue
+
+            if not password_field:
+                raise OktaTokenExtractionError("Could not find password field with any known selector")
+
+            # Get credentials from user or environment
             if not self.config.OKTA_USERNAME:
                 username = input("Enter your Okta username: ")
             else:
                 username = self.config.OKTA_USERNAME
-                print(f"🔑 Using username from config: {username}")
+                print(f"✅ Using username from config: {username}")
 
-            # Fill username field
+            if not self.config.OKTA_PASSWORD:
+                password = input("Enter your Okta password: ")
+            else:
+                password = self.config.OKTA_PASSWORD
+                print("✅ Using password from config")
+
+            # Fill credentials with human-like interaction
+            print(f"🔄 Filling username field with: {username}")
+            username_field.click()  # Focus the field
             username_field.clear()
             username_field.send_keys(username)
-            print("✅ Username filled")
+            # Trigger change event
+            self.driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: true }));", username_field)
+            self.driver.execute_script("arguments[0].dispatchEvent(new Event('change', { bubbles: true }));", username_field)
+            print(f"✅ Username field filled. Current value: {username_field.get_attribute('value')}")
 
-            # Check if there's a password field on the same page (common in newer Okta)
-            password_field = None
-            print("🔍 Looking for password field on same page...")
+            print("🔄 Filling password field...")
+            password_field.click()  # Focus the field
+            password_field.clear()
+            password_field.send_keys(password)
+            # Trigger change event
+            self.driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: true }));", password_field)
+            self.driver.execute_script("arguments[0].dispatchEvent(new Event('change', { bubbles: true }));", password_field)
+            print(f"✅ Password field filled. Length: {len(password_field.get_attribute('value'))}")
 
-            # Use our debug info - we know there's a password field: name='credentials.passcode', id='input36'
-            try:
-                password_field = self.driver.find_element(By.NAME, "credentials.passcode")
-                print("✅ Found password field with name='credentials.passcode'")
-            except Exception as e:
-                print(f"❌ Failed to find by name='credentials.passcode': {e}")
+            # Small delay to ensure fields are properly filled
+            import time
+            time.sleep(0.5)
 
-                # Try other selectors
-                for selector_type, selector_value in [
-                    (By.CSS_SELECTOR, "input[type='password']"),
-                    (By.CSS_SELECTOR, "input[autocomplete='current-password']"),
-                    (By.XPATH, "//input[@type='password']"),
-                ]:
-                    try:
-                        password_field = self.driver.find_element(selector_type, selector_value)
-                        print(f"✅ Found password field using: {selector_type} = '{selector_value}'")
-                        break
-                    except Exception as ex:
-                        print(f"❌ Failed: {ex}")
-                        continue
+            # Verify fields are still filled after delay
+            print(f"🔍 Username field after delay: {username_field.get_attribute('value')}")
+            print(f"🔍 Password field after delay: Length {len(password_field.get_attribute('value'))}")
 
-            # Fill password field if it exists
-            if password_field:
-                if not self.config.OKTA_PASSWORD:
-                    password = input("Enter your Okta password: ")
-                else:
-                    password = self.config.OKTA_PASSWORD
-                    print("🔑 Using password from config")
+            # Find and click submit button
+            print("🔄 Looking for submit button...")
+            submit_button = None
+            submit_selectors = [
+                (By.CSS_SELECTOR, "input.button.button-primary[type='submit'][value='Sign in']"),  # ✅ HARDCODED - Most specific
+                (By.CSS_SELECTOR, "input.button.button-primary[type='submit']"),  # ✅ HARDCODED - Class + type
+                (By.CSS_SELECTOR, "input[type='submit'][value='Sign in']"),  # ✅ HARDCODED - Type + value
+                (By.ID, "okta-signin-submit"),  # Standard Okta fallback
+                (By.CSS_SELECTOR, "input[type='submit']")  # Generic fallback
+            ]
 
-                password_field.clear()
-                password_field.send_keys(password)
-                print("✅ Password filled")
-            else:
-                print("ℹ️  No password field found on this page")
+            for selector in submit_selectors:
+                try:
+                    submit_button = self.driver.find_element(*selector)
+                    # Log the actual element details for hardcoding
+                    element_id = submit_button.get_attribute('id')
+                    element_name = submit_button.get_attribute('name')
+                    element_class = submit_button.get_attribute('class')
+                    element_type = submit_button.get_attribute('type')
+                    element_value = submit_button.get_attribute('value')
 
-            # Now find and click submit button (after both fields are filled)
-            submit_button = self._find_submit_button_with_soup()
+                    print(f"🔍 SUBMIT BUTTON FOUND:")
+                    print(f"   Selector used: {selector}")
+                    print(f"   ID: {element_id}")
+                    print(f"   Name: {element_name}")
+                    print(f"   Class: {element_class}")
+                    print(f"   Type: {element_type}")
+                    print(f"   Value: {element_value}")
+
+                    self.logger.info("SUBMIT BUTTON - Selector: %s, ID: %s, Name: %s, Class: %s, Type: %s, Value: %s",
+                                   selector, element_id, element_name, element_class, element_type, element_value)
+                    break
+                except Exception as e:
+                    self.logger.debug("Failed to find submit button with selector %s: %s", selector, e)
+                    continue
 
             if not submit_button:
                 raise OktaTokenExtractionError("Could not find submit button")
@@ -277,70 +357,54 @@ class OktaTokenExtractor:
         self.logger.debug("Starting MFA handling, current URL: %s", self.driver.current_url)
 
         try:
-            # Wait for MFA page to load properly
-            print("🔄 Waiting for MFA page to load...")
+            # First, check if we're on an MFA selection page
+            time.sleep(0.5)  # Reduced wait for page to load
+            self.logger.debug("After 0.5s wait, current URL: %s", self.driver.current_url)
 
-            # Wait for URL to change to MFA/verify page or for MFA elements to appear
+            # HARDCODED YUBIKEY BUTTON SELECTOR - NO MORE SEARCHING
+            # Based on screenshot: "Security Key or Biometric Authenticator" -> "Select" button
+            yubikey_button = None
             try:
-                WebDriverWait(self.driver, 10).until(
-                    lambda driver: (
-                        'verify' in driver.current_url.lower() or
-                        'mfa' in driver.current_url.lower() or
-                        'challenge' in driver.current_url.lower() or
-                        driver.find_elements(By.XPATH, "//*[contains(text(), 'Security Key') or contains(text(), 'Biometric') or contains(text(), 'Authenticator')]")
-                    )
+                # Single hardcoded selector - from previous logs we know this works
+                yubikey_button = WebDriverWait(self.driver, 3).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "[data-se='webauthn'] .select-factor"))
                 )
-                print(f"✅ MFA page loaded: {self.driver.current_url}")
-            except TimeoutException:
-                print(f"⚠️  Timeout waiting for MFA page. Current URL: {self.driver.current_url}")
-                # Continue anyway, might still work
-
-            # Additional wait for MFA elements to be fully rendered
-            time.sleep(3)
-            self.logger.debug("After MFA page load wait, current URL: %s", self.driver.current_url)
-
-            # Look for YubiKey/Security Key option using BeautifulSoup
-            yubikey_button = self._find_mfa_options_with_soup()
+                print("✅ Found YubiKey button using hardcoded selector")
+            except Exception as e:
+                self.logger.error("HARDCODED YubiKey selector failed: %s", e)
+                # Emergency fallback - but this should never happen
+                try:
+                    yubikey_button = WebDriverWait(self.driver, 2).until(
+                        EC.element_to_be_clickable((By.XPATH, "//button[text()='Select' and ancestor::*[contains(text(), 'Security Key')]]"))
+                    )
+                    print("⚠️ Used emergency fallback for YubiKey button")
+                except:
+                    pass
 
             if yubikey_button:
                 print("🔑 Automatically selecting YubiKey/Security Key option...")
                 yubikey_button.click()
-                time.sleep(2)  # Wait for selection to process
+
+                # Ensure the page has focus for WebAuthn dialog, not the URL bar
+                self.driver.execute_script("window.focus();")
+                self.driver.execute_script("document.body.focus();")
+
+                time.sleep(1)  # Give WebAuthn dialog time to appear and gain focus
 
             print("👆 Please complete MFA (YubiKey touch/PIN) in the browser window")
 
-            # Wait for MFA completion by checking for successful redirect to httpbin
+            # Wait for MFA completion by checking for redirect away from OAuth authorize URL
             self.logger.debug("Waiting for MFA completion, timeout: %s seconds", self.config.MFA_TIMEOUT)
+            current_url = self.driver.current_url
+            self.logger.debug("Current URL before MFA: %s", current_url)
 
-            start_time = time.time()
-            mfa_completed = False
-
-            while time.time() - start_time < self.config.MFA_TIMEOUT:
-                current_url = self.driver.current_url
-                print(f"🔍 Current URL: {current_url}")
-
-                # Check if we've successfully reached httpbin (authentication complete)
-                if "httpbin.ops.tatari.dev" in current_url:
-                    print("✅ Successfully redirected to httpbin - authentication complete!")
-                    mfa_completed = True
-                    break
-
-                # Check if we're back at login page (MFA failed or session expired)
-                if any(indicator in current_url.lower() for indicator in ["signin", "login", "oauth2/default/v1/authorize"]):
-                    # Check if there are username/password fields (indicates we're back at login)
-                    try:
-                        username_field = self.driver.find_element(By.NAME, "identifier")
-                        print("❌ Redirected back to login page - MFA may have failed or session expired")
-                        raise OktaTokenExtractionError("MFA failed - redirected back to login page")
-                    except:
-                        # No username field found, might be a different page
-                        pass
-
-                # Still in MFA process, wait a bit more
-                time.sleep(2)
-
-            if not mfa_completed:
-                raise OktaTokenExtractionError(f"MFA timeout after {self.config.MFA_TIMEOUT}s - never reached httpbin")
+            WebDriverWait(self.driver, self.config.MFA_TIMEOUT).until(
+                lambda driver: (
+                    driver.current_url != current_url  # URL changed from the OAuth authorize page
+                    or "callback" in driver.current_url.lower()  # Or we got redirected to callback
+                    or "headers" in driver.current_url.lower()  # Or we reached the final destination
+                )
+            )
             print("✅ MFA completed successfully")
             self.logger.debug("MFA completed, final URL: %s", self.driver.current_url)
 
@@ -403,15 +467,15 @@ class OktaTokenExtractor:
 
             self.logger.debug("Found headers: %s", list(headers.keys()))
             if "Cookie" in headers:
-                self.logger.debug("Cookie header found: %s", headers["Cookie"][:200] + "..." if len(headers["Cookie"]) > 200 else headers["Cookie"])
+                cookie_str = str(headers["Cookie"]) if isinstance(headers["Cookie"], list) else headers["Cookie"]
+                self.logger.debug("Cookie header found: %s", cookie_str[:200] + "..." if len(cookie_str) > 200 else cookie_str)
 
             # Method 1: Look for _oauth2_proxy in Cookie header (most common)
             cookie_header = headers.get("Cookie", "")
             if cookie_header:
-                # Handle case where Cookie header might be a list
+                # Handle case where cookie_header might be a list instead of string
                 if isinstance(cookie_header, list):
                     cookie_header = "; ".join(cookie_header)
-
                 # Parse cookies to find _oauth2_proxy
                 for cookie in cookie_header.split(";"):
                     cookie = cookie.strip()
@@ -443,7 +507,9 @@ class OktaTokenExtractor:
 
             # Method 3: Look in Authorization header (another possibility)
             auth_header = headers.get("Authorization", "")
-            if "oauth2_proxy" in auth_header.lower():
+            if isinstance(auth_header, list):
+                auth_header = " ".join(auth_header)
+            if "_oauth2_proxy" in auth_header.lower():
                 # Try to extract token from Authorization header
                 if "=" in auth_header:
                     token = auth_header.split("=", 1)[1]
@@ -513,10 +579,9 @@ class OktaTokenExtractor:
             # Method 1: Look for _oauth2_proxy in Cookie header (most common)
             cookie_header = headers.get("Cookie", "")
             if cookie_header:
-                # Handle case where Cookie header might be a list
+                # Handle case where cookie_header might be a list instead of string
                 if isinstance(cookie_header, list):
                     cookie_header = "; ".join(cookie_header)
-
                 # Parse cookies to find _oauth2_proxy
                 for cookie in cookie_header.split(";"):
                     cookie = cookie.strip()
@@ -548,7 +613,9 @@ class OktaTokenExtractor:
 
             # Method 3: Look in Authorization header (another possibility)
             auth_header = headers.get("Authorization", "")
-            if "oauth2_proxy" in auth_header.lower():
+            if isinstance(auth_header, list):
+                auth_header = " ".join(auth_header)
+            if "_oauth2_proxy" in auth_header.lower():
                 # Try to extract token from Authorization header
                 if "=" in auth_header:
                     token = auth_header.split("=", 1)[1]

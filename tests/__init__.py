@@ -1,1 +1,1 @@
-"""Test package for okta_token_automation.""" 
+"""Test package for okta_yoink."""

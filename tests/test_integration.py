@@ -8,18 +8,18 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from okta_token_automation.config import Config
-from okta_token_automation.main import main
-from okta_token_automation.token_extractor import OktaTokenExtractor
+from okta_yoink.config import Config
+from okta_yoink.main import main
+from okta_yoink.token_extractor import OktaTokenExtractor
 
 
 class TestIntegration:
     """Integration test cases for the complete workflow."""
 
     @patch("builtins.input", side_effect=["testuser@example.com", "testpassword"])
-    @patch("okta_token_automation.token_extractor.ChromeDriverManager")
-    @patch("okta_token_automation.token_extractor.webdriver.Chrome")
-    @patch("okta_token_automation.token_extractor.WebDriverWait")
+    @patch("okta_yoink.token_extractor.ChromeDriverManager")
+    @patch("okta_yoink.token_extractor.webdriver.Chrome")
+    @patch("okta_yoink.token_extractor.WebDriverWait")
     def test_complete_workflow_success(self, mock_wait, mock_chrome, mock_driver_manager, mock_input) -> None:
         """Test complete successful workflow from start to finish."""
         # Clear environment to prevent .env interference
@@ -97,8 +97,8 @@ class TestIntegration:
                 mock_submit_button.click.assert_called_once()
                 mock_driver.quit.assert_called_once()
 
-    @patch("okta_token_automation.main.OktaTokenExtractor")
-    @patch("okta_token_automation.main.Config")
+    @patch("okta_yoink.main.OktaTokenExtractor")
+    @patch("okta_yoink.main.Config")
     def test_main_integration_success(self, mock_config_class, mock_extractor_class) -> None:
         """Test main function integration with all components."""
         # Setup mocks
@@ -126,9 +126,9 @@ class TestIntegration:
         mock_extractor.__enter__.assert_called_once()
         mock_extractor.__exit__.assert_called_once()
 
-    @patch("okta_token_automation.token_extractor.ChromeDriverManager")
-    @patch("okta_token_automation.token_extractor.webdriver.Chrome")
-    @patch("okta_token_automation.token_extractor.WebDriverWait")
+    @patch("okta_yoink.token_extractor.ChromeDriverManager")
+    @patch("okta_yoink.token_extractor.webdriver.Chrome")
+    @patch("okta_yoink.token_extractor.WebDriverWait")
     def test_workflow_with_different_oauth2_header_formats(self, mock_wait, mock_chrome, mock_driver_manager) -> None:
         """Test workflow handles different oauth2_proxy header formats."""
         test_cases = [
@@ -184,9 +184,9 @@ class TestIntegration:
                 assert token_file.read_text() == expected_token
 
     @patch("builtins.input", side_effect=["testuser@example.com", "testpassword"])
-    @patch("okta_token_automation.token_extractor.ChromeDriverManager")
-    @patch("okta_token_automation.token_extractor.webdriver.Chrome")
-    @patch("okta_token_automation.token_extractor.WebDriverWait")
+    @patch("okta_yoink.token_extractor.ChromeDriverManager")
+    @patch("okta_yoink.token_extractor.webdriver.Chrome")
+    @patch("okta_yoink.token_extractor.WebDriverWait")
     def test_workflow_with_configured_username(self, mock_wait, mock_chrome, mock_driver_manager, mock_input) -> None:
         """Test workflow with pre-configured username."""
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -237,8 +237,8 @@ class TestIntegration:
 
             assert token == "_oauth2_proxy=configured-user-token"
 
-    @patch("okta_token_automation.token_extractor.ChromeDriverManager")
-    @patch("okta_token_automation.token_extractor.webdriver.Chrome")
+    @patch("okta_yoink.token_extractor.ChromeDriverManager")
+    @patch("okta_yoink.token_extractor.webdriver.Chrome")
     def test_workflow_cleanup_on_failure(self, mock_chrome, mock_driver_manager) -> None:
         """Test that cleanup is called even when workflow fails."""
         # Setup mocks

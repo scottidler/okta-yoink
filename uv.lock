@@ -413,7 +413,7 @@ wheels = [
 ]
 
 [[package]]
-name = "okta-token-automation"
+name = "okta-yoink"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [

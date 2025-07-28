@@ -13,8 +13,8 @@ from selenium.common.exceptions import (
     WebDriverException,
 )
 
-from okta_token_automation.config import Config
-from okta_token_automation.token_extractor import (
+from okta_yoink.config import Config
+from okta_yoink.token_extractor import (
     OktaTokenExtractor,
     OktaTokenExtractionError,
 )
@@ -36,8 +36,8 @@ class TestOktaTokenExtractor:
         assert extractor.config is config
         assert extractor.driver is None
 
-    @patch("okta_token_automation.token_extractor.ChromeDriverManager")
-    @patch("okta_token_automation.token_extractor.webdriver.Chrome")
+    @patch("okta_yoink.token_extractor.ChromeDriverManager")
+    @patch("okta_yoink.token_extractor.webdriver.Chrome")
     def test_setup_driver_success(self, mock_chrome, mock_driver_manager) -> None:
         """Test successful driver setup."""
         mock_driver_manager.return_value.install.return_value = "/path/to/chromedriver"
@@ -51,8 +51,8 @@ class TestOktaTokenExtractor:
         mock_chrome.assert_called_once()
         mock_driver.implicitly_wait.assert_called_once_with(10)
 
-    @patch("okta_token_automation.token_extractor.ChromeDriverManager")
-    @patch("okta_token_automation.token_extractor.webdriver.Chrome")
+    @patch("okta_yoink.token_extractor.ChromeDriverManager")
+    @patch("okta_yoink.token_extractor.webdriver.Chrome")
     def test_setup_driver_headless(self, mock_chrome, mock_driver_manager) -> None:
         """Test driver setup in headless mode."""
         mock_driver_manager.return_value.install.return_value = "/path/to/chromedriver"
@@ -69,8 +69,8 @@ class TestOktaTokenExtractor:
         options = kwargs["options"]
         assert "--headless" in options.arguments
 
-    @patch("okta_token_automation.token_extractor.ChromeDriverManager")
-    @patch("okta_token_automation.token_extractor.webdriver.Chrome")
+    @patch("okta_yoink.token_extractor.ChromeDriverManager")
+    @patch("okta_yoink.token_extractor.webdriver.Chrome")
     def test_setup_driver_custom_paths(self, mock_chrome, mock_driver_manager) -> None:
         """Test driver setup with custom binary and driver paths."""
         mock_driver = Mock()
@@ -91,7 +91,7 @@ class TestOktaTokenExtractor:
         options = kwargs["options"]
         assert options.binary_location == "/custom/chrome"
 
-    @patch("okta_token_automation.token_extractor.webdriver.Chrome")
+    @patch("okta_yoink.token_extractor.webdriver.Chrome")
     def test_setup_driver_failure(self, mock_chrome) -> None:
         """Test driver setup failure."""
         mock_chrome.side_effect = WebDriverException("Driver failed")
@@ -124,7 +124,7 @@ class TestOktaTokenExtractor:
         extractor = OktaTokenExtractor()
         extractor.driver = mock_driver
 
-        with patch("okta_token_automation.token_extractor.WebDriverWait", return_value=mock_wait):
+        with patch("okta_yoink.token_extractor.WebDriverWait", return_value=mock_wait):
             extractor.login_to_okta()
 
         # Verify interactions
@@ -153,7 +153,7 @@ class TestOktaTokenExtractor:
         extractor = OktaTokenExtractor(config)
         extractor.driver = mock_driver
 
-        with patch("okta_token_automation.token_extractor.WebDriverWait", return_value=mock_wait):
+        with patch("okta_yoink.token_extractor.WebDriverWait", return_value=mock_wait):
             extractor.login_to_okta()
 
         # Should only ask for password, not username
@@ -171,7 +171,7 @@ class TestOktaTokenExtractor:
         extractor = OktaTokenExtractor()
         extractor.driver = mock_driver
 
-        with patch("okta_token_automation.token_extractor.WebDriverWait", return_value=mock_wait):
+        with patch("okta_yoink.token_extractor.WebDriverWait", return_value=mock_wait):
             with pytest.raises(OktaTokenExtractionError, match="Timeout waiting for Okta login page after 60s"):
                 extractor.login_to_okta()
 
@@ -194,7 +194,7 @@ class TestOktaTokenExtractor:
         extractor = OktaTokenExtractor()
         extractor.driver = mock_driver
 
-        with patch("okta_token_automation.token_extractor.WebDriverWait", return_value=mock_wait):
+        with patch("okta_yoink.token_extractor.WebDriverWait", return_value=mock_wait):
             extractor.handle_mfa()
 
         # Verify YubiKey button was clicked
@@ -211,7 +211,7 @@ class TestOktaTokenExtractor:
         extractor = OktaTokenExtractor()
         extractor.driver = mock_driver
 
-        with patch("okta_token_automation.token_extractor.WebDriverWait", return_value=mock_wait):
+        with patch("okta_yoink.token_extractor.WebDriverWait", return_value=mock_wait):
             with pytest.raises(OktaTokenExtractionError, match="MFA timeout after 120s"):
                 extractor.handle_mfa()
 
@@ -243,7 +243,7 @@ class TestOktaTokenExtractor:
         extractor = OktaTokenExtractor()
         extractor.driver = mock_driver
 
-        with patch("okta_token_automation.token_extractor.WebDriverWait", return_value=mock_wait):
+        with patch("okta_yoink.token_extractor.WebDriverWait", return_value=mock_wait):
             token = extractor.extract_token_from_internal_service()
 
         assert token == "_oauth2_proxy=test-token-value"
@@ -270,7 +270,7 @@ class TestOktaTokenExtractor:
         extractor = OktaTokenExtractor()
         extractor.driver = mock_driver
 
-        with patch("okta_token_automation.token_extractor.WebDriverWait", return_value=mock_wait):
+        with patch("okta_yoink.token_extractor.WebDriverWait", return_value=mock_wait):
             with pytest.raises(OktaTokenExtractionError, match="No _oauth2_proxy token found in response"):
                 extractor.extract_token_from_internal_service()
 
@@ -287,7 +287,7 @@ class TestOktaTokenExtractor:
         extractor = OktaTokenExtractor()
         extractor.driver = mock_driver
 
-        with patch("okta_token_automation.token_extractor.WebDriverWait", return_value=mock_wait):
+        with patch("okta_yoink.token_extractor.WebDriverWait", return_value=mock_wait):
             with pytest.raises(OktaTokenExtractionError, match="Invalid JSON response"):
                 extractor.extract_token_from_internal_service()
 
@@ -304,7 +304,7 @@ class TestOktaTokenExtractor:
         extractor = OktaTokenExtractor()
         extractor.driver = mock_driver
 
-        with patch("okta_token_automation.token_extractor.WebDriverWait", return_value=mock_wait):
+        with patch("okta_yoink.token_extractor.WebDriverWait", return_value=mock_wait):
             with pytest.raises(OktaTokenExtractionError, match="Empty response from httpbin service"):
                 extractor.extract_token_from_internal_service()
 

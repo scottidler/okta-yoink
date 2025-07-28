@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from okta_token_automation.config import Config
+from okta_yoink.config import Config
 
 
 class TestConfig:
