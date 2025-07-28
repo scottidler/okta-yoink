@@ -70,8 +70,8 @@ okta() {
         esac
     done
 
-    # Set positional parameters to remaining args
-    set -- "${args[@]}"
+    # Use args array directly instead of modifying global positional parameters
+    # set -- "${args[@]}"  # REMOVED: This was poisoning the shell environment
 
     # Error handling function
     error_exit() {
@@ -162,64 +162,100 @@ okta() {
         okta_echo "Token refreshed successfully"
     }
 
-    # Export token to environment
+        # Export token to environment
     export_token() {
         local token_content
-
+        
         if [[ ! -f "$TOKEN_FILE" ]]; then
             error_exit "Token file not found: $TOKEN_FILE"
         fi
-
+        
         if [[ ! -r "$TOKEN_FILE" ]]; then
             error_exit "Cannot read token file: $TOKEN_FILE"
         fi
-
+        
         token_content=$(cat "$TOKEN_FILE")
-
-        if [[ -z "$token_content" ]]; then
-            error_exit "Token file is empty: $TOKEN_FILE"
+        
+        # Validate token content - must not be empty and should contain _oauth2_proxy
+        if [[ -z "$token_content" || "$token_content" =~ ^[[:space:]]*$ ]]; then
+            error_exit "Token file is empty or contains only whitespace: $TOKEN_FILE"
+            return 1
         fi
-
+        
+        if [[ ! "$token_content" =~ _oauth2_proxy= ]]; then
+            error_exit "Token file does not contain valid _oauth2_proxy token: $TOKEN_FILE"
+            return 1
+        fi
+        
         # Export to global environment (persists in shell)
         export OKTA_COOKIE="$token_content"
         okta_echo "Token exported to OKTA_COOKIE (persists in shell)"
     }
 
     # Main execution logic
-    local target_command="${1:-}"
-    if [[ -n "$target_command" ]]; then
-        shift
-    fi
-
+    local target_command=""
+    local remaining_args=()
+    
     # Show configuration (unless silent)
     if [[ "$SILENT" != true ]]; then
         echo "[okta] OKTA_YOINK_TTL=${OKTA_YOINK_TTL}" >&2
         echo "[okta] OKTA_YOINK_REPO=${OKTA_YOINK_REPO}" >&2
     fi
+    
+    if [[ ${#args[@]} -gt 0 ]]; then
+        # Find the first non-empty argument
+        for arg in "${args[@]}"; do
+            if [[ -n "$arg" ]]; then
+                target_command="$arg"
+                break
+            fi
+        done
+        
+        # Get remaining args after the target command
+        local found_target=false
+        for arg in "${args[@]}"; do
+            if [[ "$found_target" == true ]]; then
+                remaining_args+=("$arg")
+            elif [[ -n "$arg" && "$arg" == "$target_command" ]]; then
+                found_target=true
+            fi
+        done
+    fi
+
+
 
     # Step 1: Validate target command exists
     validate_command "$target_command" || return $?
 
-    # Step 2: Check token freshness and refresh if needed
+        # Step 2: Check token freshness and refresh if needed
     if ! is_token_fresh; then
         refresh_token || return $?
     else
         okta_echo "Using cached token"
     fi
-
+    
     # Step 3: Export token to environment (persists in shell)
-    export_token || return $?
+    # If token validation fails, refresh and try again
+    if ! export_token; then
+        okta_echo "Token validation failed, refreshing..."
+        refresh_token || return $?
+        export_token || return $?
+    fi
 
     # Step 4: Execute target command with all arguments (if provided)
     if [[ -n "$target_command" ]]; then
-        okta_echo "Executing: $target_command $*"
+        okta_echo "Executing: $target_command ${remaining_args[*]}"
 
         # Add empty line before command output (unless silent)
         if [[ "$SILENT" != true ]]; then
             echo >&2
         fi
 
-        "$target_command" "$@"
+        if [[ ${#remaining_args[@]} -gt 0 ]]; then
+            "$target_command" "${remaining_args[@]}"
+        else
+            "$target_command"
+        fi
         local exit_code=$?
         return $exit_code
     else
