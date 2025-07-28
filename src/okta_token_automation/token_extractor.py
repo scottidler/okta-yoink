@@ -517,7 +517,7 @@ class OktaTokenExtractor:
             print("🚀 Starting Okta token extraction...")
             self.logger.info("Starting token extraction process")
 
-                        self.setup_driver()
+            self.setup_driver()
             self.logger.debug("Driver setup completed")
 
             # Check if we can access the protected resource directly (already authenticated)

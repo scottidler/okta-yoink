@@ -20,7 +20,7 @@ class TestConfig:
         assert config.OKTA_LOGIN_URL == "https://tatari.okta.com"
         assert config.HTTPBIN_URL == "https://httpbin.ops.tatari.dev/headers"
         assert config.HEADLESS is False
-        assert config.BROWSER_TIMEOUT == 30
+        assert config.BROWSER_TIMEOUT == 60
         assert config.IMPLICIT_WAIT == 10
         assert config.MFA_TIMEOUT == 120
         assert config.TOKEN_ENV_VAR == "OKTA_COOKIE"
@@ -132,7 +132,7 @@ class TestConfig:
         assert "OKTA_LOGIN_URL='https://tatari.okta.com'" in repr_str
         assert "HTTPBIN_URL='https://httpbin.ops.tatari.dev/headers'" in repr_str
         assert "HEADLESS=False" in repr_str
-        assert "BROWSER_TIMEOUT=30" in repr_str
+        assert "BROWSER_TIMEOUT=60" in repr_str
         assert "OKTA_USERNAME=''" in repr_str
 
     @patch.dict(os.environ, {"OKTA_USERNAME": "test.user@example.com"})
