@@ -148,6 +148,12 @@ okta() {
         shift
     fi
 
+    # Show configuration (unless silent)
+    if [[ "$SILENT" != true ]]; then
+        echo "[okta] OKTA_YOINK_TTL=${OKTA_YOINK_TTL}" >&2
+        echo "[okta] OKTA_YOINK_REPO=${OKTA_YOINK_REPO}" >&2
+    fi
+
     # Step 1: Validate target command exists
     validate_command "$target_command" || return $?
 

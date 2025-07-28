@@ -135,6 +135,8 @@ Error format: `[okta] Error: <description>` to stderr
 ```bash
 # Standalone use (just get authenticated)
 $ okta
+[okta] OKTA_YOINK_TTL=3600
+[okta] OKTA_YOINK_REPO=~/repos/scottidler/okta-yoink
 [okta] Token not found, refreshing...
 🚀 Starting Okta token extraction...
 # ... browser automation for MFA ...
@@ -147,9 +149,12 @@ $ some-command-that-needs-okta
 
 # Or use with command wrapper (traditional mode)
 $ okta persona -o Engineering -m dec
+[okta] OKTA_YOINK_TTL=3600
+[okta] OKTA_YOINK_REPO=~/repos/scottidler/okta-yoink
 [okta] Using cached token
 [okta] Token exported to OKTA_COOKIE (persists in shell)
 [okta] Executing: persona -o Engineering -m dec
+
 # ... persona command executes with authentication ...
 
 # Later use (token expired)
@@ -165,6 +170,7 @@ $ okta
 - **Standalone Mode**: `okta` alone refreshes token and exports to shell
 - **Wrapper Mode**: `okta COMMAND` wraps any command with authentication
 - **Silent Mode**: `okta -s` or `okta --silent` suppresses okta output messages
+- **Configuration Display**: Shows TTL and repository path at start (unless silent)
 - **Clean Output**: Adds empty line between okta messages and command output
 - Users never directly manage tokens
 - Authentication state persists across shell sessions
@@ -321,4 +327,4 @@ _oauth2_proxy=<token_value>
 
 ## Conclusion
 
-The `okta` shim provides a seamless authentication experience by abstracting token management complexity from end users. Its design prioritizes simplicity, reliability, and transparency while maintaining security best practices. The caching mechanism significantly improves user experience by eliminating repeated authentication prompts during normal workflow. 
+The `okta` shim provides a seamless authentication experience by abstracting token management complexity from end users. Its design prioritizes simplicity, reliability, and transparency while maintaining security best practices. The caching mechanism significantly improves user experience by eliminating repeated authentication prompts during normal workflow.
