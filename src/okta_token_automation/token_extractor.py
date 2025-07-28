@@ -102,13 +102,18 @@ class OktaTokenExtractor:
             username_field = None
             password_field = None
 
-            # Try to find username field with various selectors
+                        # Try to find username field with various selectors
             for selector in [
                 (By.ID, "okta-signin-username"),
                 (By.NAME, "username"),
                 (By.CSS_SELECTOR, "input[type='text']"),
                 (By.CSS_SELECTOR, "input[type='email']"),
-                (By.XPATH, "//input[contains(@placeholder, 'Username') or contains(@placeholder, 'username')]")
+                (By.XPATH, "//input[contains(@placeholder, 'Username') or contains(@placeholder, 'username')]"),
+                # New selectors based on your Okta page structure
+                (By.CSS_SELECTOR, "input[name='identifier']"),
+                (By.CSS_SELECTOR, "input[autocomplete='username']"),
+                (By.XPATH, "//label[contains(text(), 'Username')]/following-sibling::input"),
+                (By.XPATH, "//label[contains(text(), 'Username')]/..//input")
             ]:
                 try:
                     self.logger.debug("Trying to find username field with selector: %s", selector)
@@ -206,8 +211,14 @@ class OktaTokenExtractor:
 
             # Look for YubiKey/Security Key option and auto-select it
             yubikey_selectors = [
+                # Updated selectors based on your Okta MFA page
+                (By.CSS_SELECTOR, "button[data-se='webauthn'] .button.select-factor.link-button"),
+                (By.CSS_SELECTOR, "[data-se='webauthn'] button.select-factor"),
+                (By.CSS_SELECTOR, "[data-se='webauthn'] .select-factor"),
+                (By.XPATH, "//div[@data-se='webauthn']//button[contains(@class, 'select-factor')]"),
+                (By.XPATH, "//div[contains(text(), 'Security Key or Biometric')]//following::button[contains(text(), 'Select')]"),
+                # Fallback to original selectors
                 (By.XPATH, "//button[contains(text(), 'Security Key') or contains(text(), 'Biometric')]"),
-                (By.XPATH, "//div[contains(text(), 'Security Key') or contains(text(), 'Biometric')]//following::button[contains(text(), 'Select')]"),
                 (By.CSS_SELECTOR, "button[data-se='webauthn']"),
                 (By.XPATH, "//span[contains(text(), 'Security Key')]//ancestor::div//button"),
             ]
@@ -520,10 +531,12 @@ class OktaTokenExtractor:
             self.setup_driver()
             self.logger.debug("Driver setup completed")
 
-            # Check if we can access the protected resource directly (already authenticated)
+                        # Check if we can access the protected resource directly (already authenticated)
             if self.check_if_already_authenticated():
                 self.logger.info("Already authenticated, skipping login flow")
                 print("✅ Already authenticated, skipping login...")
+                # We're already at httpbin from the auth check, so we can extract directly
+                self.logger.debug("Already at httpbin, proceeding to token extraction")
             else:
                 self.login_to_okta()
                 self.logger.debug("Login completed")
@@ -563,7 +576,7 @@ class OktaTokenExtractor:
         finally:
             self.cleanup()
 
-    def check_if_already_authenticated(self) -> bool:
+        def check_if_already_authenticated(self) -> bool:
         """Check if we can access the protected httpbin resource without login.
 
         Returns:
@@ -574,30 +587,37 @@ class OktaTokenExtractor:
 
         try:
             self.logger.debug("Checking if already authenticated by testing httpbin access")
-            self.driver.get(self.config.HTTPBIN_URL)
 
-            # Wait a moment for any redirects
-            time.sleep(3)
-
+            # First, check current URL to see if we're on Okta dashboard
             current_url = self.driver.current_url
-            self.logger.debug("After httpbin navigation, current URL: %s", current_url)
+            self.logger.debug("Current URL before httpbin test: %s", current_url)
 
-            # If we're still on httpbin (not redirected to login), we're authenticated
-            if "httpbin.ops.tatari.dev" in current_url and "headers" in current_url:
-                # Double check by looking for JSON content
-                try:
-                    pre_element = self.driver.find_element(By.TAG_NAME, "pre")
-                    content = pre_element.text
-                    if content.strip().startswith("{") and "headers" in content:
-                        self.logger.debug("Found JSON headers content, authentication confirmed")
-                        return True
-                except:
-                    pass
+            # If we're on Okta dashboard, we're likely authenticated
+            if "tatari.okta.com" in current_url and ("UserHome" in current_url or "app" in current_url):
+                self.logger.debug("On Okta dashboard, testing httpbin access")
 
-            # If we got redirected to Okta login, we need to authenticate
-            if "okta.com" in current_url and ("login" in current_url or "signin" in current_url):
-                self.logger.debug("Redirected to Okta login, authentication needed")
-                return False
+                # Test httpbin access
+                self.driver.get(self.config.HTTPBIN_URL)
+                time.sleep(3)
+
+                httpbin_url = self.driver.current_url
+                self.logger.debug("After httpbin navigation, current URL: %s", httpbin_url)
+
+                # If we're still on httpbin (not redirected to login), we're authenticated
+                if "httpbin.ops.tatari.dev" in httpbin_url and "headers" in httpbin_url:
+                    try:
+                        pre_element = self.driver.find_element(By.TAG_NAME, "pre")
+                        content = pre_element.text
+                        if content.strip().startswith("{") and "headers" in content:
+                            self.logger.debug("Found JSON headers content, authentication confirmed")
+                            return True
+                    except:
+                        pass
+
+                # If we got redirected to Okta login, we need to authenticate
+                if "okta.com" in httpbin_url and ("login" in httpbin_url or "signin" in httpbin_url):
+                    self.logger.debug("Redirected to Okta login, authentication needed")
+                    return False
 
             return False
 
