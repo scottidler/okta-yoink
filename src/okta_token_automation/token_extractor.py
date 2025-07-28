@@ -517,14 +517,19 @@ class OktaTokenExtractor:
             print("🚀 Starting Okta token extraction...")
             self.logger.info("Starting token extraction process")
 
-            self.setup_driver()
+                        self.setup_driver()
             self.logger.debug("Driver setup completed")
 
-            self.login_to_okta()
-            self.logger.debug("Login completed")
+            # Check if we can access the protected resource directly (already authenticated)
+            if self.check_if_already_authenticated():
+                self.logger.info("Already authenticated, skipping login flow")
+                print("✅ Already authenticated, skipping login...")
+            else:
+                self.login_to_okta()
+                self.logger.debug("Login completed")
 
-            self.handle_mfa()
-            self.logger.debug("MFA completed")
+                self.handle_mfa()
+                self.logger.debug("MFA completed")
 
             # Small delay to ensure full authentication
             self.logger.debug("Waiting 2 seconds for authentication to settle")
@@ -557,6 +562,48 @@ class OktaTokenExtractor:
 
         finally:
             self.cleanup()
+
+    def check_if_already_authenticated(self) -> bool:
+        """Check if we can access the protected httpbin resource without login.
+
+        Returns:
+            True if already authenticated, False if login is needed.
+        """
+        if not self.driver:
+            return False
+
+        try:
+            self.logger.debug("Checking if already authenticated by testing httpbin access")
+            self.driver.get(self.config.HTTPBIN_URL)
+
+            # Wait a moment for any redirects
+            time.sleep(3)
+
+            current_url = self.driver.current_url
+            self.logger.debug("After httpbin navigation, current URL: %s", current_url)
+
+            # If we're still on httpbin (not redirected to login), we're authenticated
+            if "httpbin.ops.tatari.dev" in current_url and "headers" in current_url:
+                # Double check by looking for JSON content
+                try:
+                    pre_element = self.driver.find_element(By.TAG_NAME, "pre")
+                    content = pre_element.text
+                    if content.strip().startswith("{") and "headers" in content:
+                        self.logger.debug("Found JSON headers content, authentication confirmed")
+                        return True
+                except:
+                    pass
+
+            # If we got redirected to Okta login, we need to authenticate
+            if "okta.com" in current_url and ("login" in current_url or "signin" in current_url):
+                self.logger.debug("Redirected to Okta login, authentication needed")
+                return False
+
+            return False
+
+        except Exception as e:
+            self.logger.debug("Error checking authentication status: %s", e)
+            return False
 
     def __enter__(self) -> "OktaTokenExtractor":
         """Context manager entry."""
