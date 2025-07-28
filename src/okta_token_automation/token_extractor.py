@@ -63,6 +63,10 @@ class OktaTokenExtractor:
         chrome_options.add_argument("--disable-web-security")
         chrome_options.add_argument("--disable-features=VizDisplayCompositor")
         chrome_options.add_argument("--window-size=1920,1080")
+        # Use unique user data directory to prevent conflicts
+        import tempfile
+        user_data_dir = tempfile.mkdtemp(prefix="okta-yoink-chrome-")
+        chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
 
         # Set custom binary path if provided
         if self.config.CHROME_BINARY_PATH:
@@ -102,18 +106,21 @@ class OktaTokenExtractor:
             username_field = None
             password_field = None
 
-                        # Try to find username field with various selectors
+                                    # Try to find username field with various selectors
             for selector in [
                 (By.ID, "okta-signin-username"),
                 (By.NAME, "username"),
+                (By.NAME, "identifier"),
                 (By.CSS_SELECTOR, "input[type='text']"),
                 (By.CSS_SELECTOR, "input[type='email']"),
-                (By.XPATH, "//input[contains(@placeholder, 'Username') or contains(@placeholder, 'username')]"),
-                # New selectors based on your Okta page structure
-                (By.CSS_SELECTOR, "input[name='identifier']"),
                 (By.CSS_SELECTOR, "input[autocomplete='username']"),
+                (By.CSS_SELECTOR, "input[autocomplete='email']"),
+                (By.XPATH, "//input[contains(@placeholder, 'Username') or contains(@placeholder, 'username')]"),
                 (By.XPATH, "//label[contains(text(), 'Username')]/following-sibling::input"),
-                (By.XPATH, "//label[contains(text(), 'Username')]/..//input")
+                (By.XPATH, "//label[contains(text(), 'Username')]/..//input"),
+                # Very generic - first text input on page
+                (By.XPATH, "(//input[@type='text'])[1]"),
+                (By.XPATH, "(//input[not(@type) or @type='text'])[1]")
             ]:
                 try:
                     self.logger.debug("Trying to find username field with selector: %s", selector)
@@ -211,13 +218,16 @@ class OktaTokenExtractor:
 
             # Look for YubiKey/Security Key option and auto-select it
             yubikey_selectors = [
-                # Updated selectors based on your Okta MFA page
-                (By.CSS_SELECTOR, "button[data-se='webauthn'] .button.select-factor.link-button"),
-                (By.CSS_SELECTOR, "[data-se='webauthn'] button.select-factor"),
+                # Most specific selectors first
+                (By.CSS_SELECTOR, "[data-se='webauthn'] button"),
                 (By.CSS_SELECTOR, "[data-se='webauthn'] .select-factor"),
-                (By.XPATH, "//div[@data-se='webauthn']//button[contains(@class, 'select-factor')]"),
+                (By.XPATH, "//div[@data-se='webauthn']//button"),
+                # Text-based selectors
+                (By.XPATH, "//button[contains(text(), 'Select') and ancestor::*[contains(text(), 'Security Key')]]"),
+                (By.XPATH, "//button[contains(text(), 'Select') and ancestor::*[contains(text(), 'Biometric')]]"),
                 (By.XPATH, "//div[contains(text(), 'Security Key or Biometric')]//following::button[contains(text(), 'Select')]"),
-                # Fallback to original selectors
+                (By.XPATH, "//div[contains(text(), 'Security Key')]//following::button[contains(text(), 'Select')]"),
+                # Generic fallbacks
                 (By.XPATH, "//button[contains(text(), 'Security Key') or contains(text(), 'Biometric')]"),
                 (By.CSS_SELECTOR, "button[data-se='webauthn']"),
                 (By.XPATH, "//span[contains(text(), 'Security Key')]//ancestor::div//button"),
