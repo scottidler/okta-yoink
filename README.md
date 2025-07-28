@@ -50,6 +50,7 @@ uv pip install -e ".[dev]"
 
 **The key step**: Source the okta shell function to enable the `okta` command:
 
+**Method 1: In-repo sourcing (recommended - auto-discovery works)**
 ```bash
 # For current session only
 source bin/okta.sh
@@ -61,6 +62,19 @@ echo "source ~/repos/scottidler/okta-yoink/bin/okta.sh" >> ~/.bashrc
 
 # Reload your shell
 source ~/.zshrc  # or ~/.bashrc
+```
+
+**Method 2: Copy script with environment variable**
+```bash
+# Copy script to a convenient location
+cp ~/repos/scottidler/okta-yoink/bin/okta.sh ~/.local/bin/
+
+# Set environment variable and source in shell startup
+echo "export OKTA_YOINK_REPO=~/repos/scottidler/okta-yoink" >> ~/.zshrc
+echo "source ~/.local/bin/okta.sh" >> ~/.zshrc
+
+# Reload your shell
+source ~/.zshrc
 ```
 
 Verify installation:
@@ -78,7 +92,15 @@ The okta function uses two key environment variables:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OKTA_YOINK_TTL` | `3600` | Token time-to-live in seconds (1 hour default) |
-| `OKTA_YOINK_REPO` | `~/repos/scottidler/okta-yoink` | Path to this repository |
+| `OKTA_YOINK_REPO` | *(auto-discovered)* | Path to this repository (auto-discovered via git) |
+
+**Auto-Discovery**: The `OKTA_YOINK_REPO` path is automatically discovered using `git rev-parse --show-toplevel` from the location of the `bin/okta.sh` script. This works when you source the script directly from the repository.
+
+**⚠️ Important**: Auto-discovery only works when sourcing `bin/okta.sh` from within the git repository. If you copy the script elsewhere (e.g., to `~/.local/bin/`), you'll need to set the `OKTA_YOINK_REPO` environment variable manually.
+
+**Recommended Installation Methods**:
+1. **In-repo sourcing** (auto-discovery works): `source ~/path/to/okta-yoink/bin/okta.sh`
+2. **Copy with environment variable**: Copy script anywhere + set `OKTA_YOINK_REPO=/path/to/okta-yoink`
 
 ### Application Configuration
 
@@ -173,7 +195,7 @@ When tokens are expired or missing:
 # Use longer token TTL (2 hours)
 OKTA_YOINK_TTL=7200 okta persona -o Engineering -m dec
 
-# Use different repository location
+# Use different repository location (overrides auto-discovery)
 OKTA_YOINK_REPO=/path/to/my/okta-yoink okta
 ```
 
@@ -243,9 +265,14 @@ type okta  # Should show it's a function
 
 **Repository not found:**
 ```bash
-# Check OKTA_YOINK_REPO path
+# Check OKTA_YOINK_REPO path (should auto-discover)
 echo $OKTA_YOINK_REPO
-# Update if needed
+
+# If you see warnings about auto-discovery failure:
+# Option 1: Source from within the repository (recommended)
+source ~/path/to/okta-yoink/bin/okta.sh
+
+# Option 2: Set environment variable manually
 export OKTA_YOINK_REPO=/correct/path/to/okta-yoink
 ```
 

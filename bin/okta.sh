@@ -8,7 +8,50 @@
 okta() {
     # Configuration
     local OKTA_YOINK_TTL=${OKTA_YOINK_TTL:-3600} # Default: 1 hour
-    local OKTA_YOINK_REPO=${OKTA_YOINK_REPO:-~/repos/scottidler/okta-yoink}
+
+    # Auto-discover repository path using git, with fallback to environment variable
+    local OKTA_YOINK_REPO="${OKTA_YOINK_REPO:-}"
+    if [[ -z "$OKTA_YOINK_REPO" ]]; then
+        # Auto-discover using git from the location of this script
+        local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        if git -C "$script_dir" rev-parse --git-dir >/dev/null 2>&1; then
+            OKTA_YOINK_REPO="$(git -C "$script_dir" rev-parse --show-toplevel)"
+        else
+            # Auto-discovery failed - script likely copied outside repo
+            # Try common locations as fallbacks
+            local fallback_paths=(
+                ~/repos/scottidler/okta-yoink
+                ~/okta-yoink
+                ~/.local/share/okta-yoink
+            )
+
+            local found_repo=""
+            for path in "${fallback_paths[@]}"; do
+                if [[ -d "$path" && -f "$path/pyproject.toml" ]]; then
+                    OKTA_YOINK_REPO="$path"
+                    found_repo="$path"
+                    break
+                fi
+            done
+
+            # If still not found, use the first fallback and let error handling deal with it
+            if [[ -z "$OKTA_YOINK_REPO" ]]; then
+                OKTA_YOINK_REPO=~/repos/scottidler/okta-yoink
+            fi
+
+            # Show warning about auto-discovery failure (unless silent)
+            if [[ "$SILENT" != true ]]; then
+                if [[ -n "$found_repo" ]]; then
+                    echo "[okta] Warning: Auto-discovery failed, using fallback: $found_repo" >&2
+                    echo "[okta] Consider setting OKTA_YOINK_REPO environment variable" >&2
+                else
+                    echo "[okta] Warning: Auto-discovery failed, using default: $OKTA_YOINK_REPO" >&2
+                    echo "[okta] Set OKTA_YOINK_REPO environment variable to correct path" >&2
+                fi
+            fi
+        fi
+    fi
+
     local TOKEN_FILE=~/.okta-cookie
     local SILENT=false
 

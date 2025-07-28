@@ -82,7 +82,7 @@ okta-yoink/
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OKTA_YOINK_TTL` | `3600` | Token time-to-live in seconds (1 hour) |
-| `OKTA_YOINK_REPO` | `~/repos/scottidler/okta-yoink` | Path to okta-yoink repository |
+| `OKTA_YOINK_REPO` | *(auto-discovered)* | Path to okta-yoink repository (auto-discovered via git) |
 
 #### Runtime
 
@@ -98,7 +98,14 @@ current_time = $(date +%s)
 file_mtime = $(stat -f %m ~/.okta-cookie 2>/dev/null || echo 0)
 age = $((current_time - file_mtime))
 ttl = ${OKTA_YOINK_TTL:-3600}
-repo_path = ${OKTA_YOINK_REPO:-~/repos/scottidler/okta-yoink}
+
+# Auto-discover repository path
+if [[ -n "$OKTA_YOINK_REPO" ]]; then
+    repo_path = "$OKTA_YOINK_REPO"
+else
+    script_dir = $(dirname ${BASH_SOURCE[0]})
+    repo_path = $(git -C "$script_dir" rev-parse --show-toplevel)
+fi
 
 if [[ $age -gt $ttl ]]; then
     # Token is stale, refresh needed
