@@ -4,9 +4,9 @@
 
 This approach uses Selenium WebDriver to automate a browser session that extracts the `_oauth2_proxy` token from any authenticated request to your company's internal services.
 
-**⚠️ CRITICAL UNDERSTANDING**: 
+**⚠️ CRITICAL UNDERSTANDING**:
 - Browser automation (Selenium/Playwright) **CANNOT access your existing Firefox session**
-- Browser extensions **CANNOT access your existing Firefox session** 
+- Browser extensions **CANNOT access your existing Firefox session**
 - Automation **MUST create a separate browser session** with its own authentication
 - You **MUST perform MFA (YubiKey) authentication twice daily** - once for your main browser, once for this automation
 - Once authenticated in the automation browser, the `_oauth2_proxy` token is sent with **ALL requests to internal services**, not just httpbin
@@ -80,15 +80,15 @@ class Config:
     # Okta/Company URLs
     OKTA_LOGIN_URL = "https://tatari.okta.com"
     HTTPBIN_URL = "https://httpbin.ops.tatari.dev/headers"
-    
+
     # Browser settings
     HEADLESS = os.getenv("HEADLESS", "false").lower() == "true"
     BROWSER_TIMEOUT = int(os.getenv("BROWSER_TIMEOUT", "30"))
-    
+
     # Token storage
     TOKEN_FILE = os.path.expanduser("~/.okta-token")
     TOKEN_ENV_VAR = "OKTA_COOKIE"
-    
+
     # User credentials (you'll enter these interactively)
     OKTA_USERNAME = os.getenv("OKTA_USERNAME", "")
 ```
@@ -111,23 +111,23 @@ class OktaTokenExtractor:
     def __init__(self):
         self.driver = None
         self.config = Config()
-    
+
     def setup_driver(self):
         """Initialize Chrome WebDriver with appropriate options"""
         chrome_options = Options()
-        
+
         if self.config.HEADLESS:
             chrome_options.add_argument("--headless")
-        
+
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--window-size=1920,1080")
-        
+
         service = Service(ChromeDriverManager().install())
         self.driver = webdriver.Chrome(service=service, options=chrome_options)
         self.driver.implicitly_wait(10)
-    
+
     def login_to_okta(self):
         """
         Navigate to Okta and handle login flow
@@ -135,56 +135,56 @@ class OktaTokenExtractor:
         """
         print("🔄 Navigating to Okta login...")
         self.driver.get(self.config.OKTA_LOGIN_URL)
-        
+
         # Wait for login form
         try:
             username_field = WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.ID, "okta-signin-username"))
             )
             password_field = self.driver.find_element(By.ID, "okta-signin-password")
-            
+
             # Get credentials from user
             if not self.config.OKTA_USERNAME:
                 username = input("Enter your Okta username: ")
             else:
                 username = self.config.OKTA_USERNAME
-            
+
             password = input("Enter your Okta password: ")
-            
+
             # Fill credentials
             username_field.send_keys(username)
             password_field.send_keys(password)
-            
+
             # Submit form
             submit_button = self.driver.find_element(By.ID, "okta-signin-submit")
             submit_button.click()
-            
+
             print("✅ Credentials submitted")
-            
+
         except Exception as e:
             print(f"❌ Error during login: {e}")
             raise
-    
+
     def handle_mfa(self):
         """
         Handle MFA challenge - user needs to interact with YubiKey
         """
         print("🔐 Waiting for MFA challenge...")
         print("👆 Please complete MFA (YubiKey touch/PIN) in the browser window")
-        
+
         # Wait for MFA completion (user manually completes)
         # We detect completion by waiting for redirect away from MFA page
         try:
             WebDriverWait(self.driver, 120).until(
-                lambda driver: "mfa" not in driver.current_url.lower() and 
+                lambda driver: "mfa" not in driver.current_url.lower() and
                               "challenge" not in driver.current_url.lower()
             )
             print("✅ MFA completed successfully")
-            
+
         except Exception as e:
             print(f"❌ MFA timeout or error: {e}")
             raise
-    
+
     def extract_token_from_internal_service(self):
         """
         Navigate to any internal service and extract the _oauth2_proxy token
@@ -192,77 +192,77 @@ class OktaTokenExtractor:
         """
         print("🔄 Navigating to internal service to extract token...")
         self.driver.get(self.config.HTTPBIN_URL)  # Could be any *.ops.tatari.dev or *.tatari.dev service
-        
+
         try:
             # Wait for JSON response
             WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.TAG_NAME, "pre"))
             )
-            
+
             # Get the JSON content
             json_element = self.driver.find_element(By.TAG_NAME, "pre")
             json_content = json_element.text
-            
+
             # Parse JSON to find _oauth2_proxy header
             data = json.loads(json_content)
             headers = data.get("headers", {})
-            
+
             # Look for the oauth2_proxy header (case-insensitive)
             oauth2_header = None
             for header_name, header_value in headers.items():
                 if "oauth2" in header_name.lower() and "proxy" in header_name.lower():
                     oauth2_header = header_value
                     break
-            
+
             if not oauth2_header:
                 raise Exception("No _oauth2_proxy header found in response")
-            
+
             # Extract the token value (format: _oauth2_proxy=TOKEN_VALUE)
             if "=" in oauth2_header:
                 token = oauth2_header.split("=", 1)[1]
             else:
                 token = oauth2_header
-            
+
             print(f"✅ Token extracted: {token[:50]}...")
             return f"_oauth2_proxy={token}"
-            
+
         except Exception as e:
             print(f"❌ Error extracting token: {e}")
             raise
-    
+
     def save_token(self, token):
         """Save token to file and environment"""
         # Save to file
         with open(self.config.TOKEN_FILE, 'w') as f:
             f.write(token)
-        
+
         # Set environment variable for current session
         os.environ[self.config.TOKEN_ENV_VAR] = token
-        
+
         print(f"✅ Token saved to {self.config.TOKEN_FILE}")
         print(f"✅ Environment variable {self.config.TOKEN_ENV_VAR} set")
-    
+
     def run(self):
         """Main execution flow"""
         try:
             print("🚀 Starting Okta token extraction...")
-            
+
             self.setup_driver()
             self.login_to_okta()
             self.handle_mfa()
-            
+
             # Small delay to ensure full authentication
             time.sleep(2)
-            
+
             token = self.extract_token_from_internal_service()
             self.save_token(token)
-            
+
             print("🎉 Token extraction completed successfully!")
-            
+
         except Exception as e:
             print(f"💥 Token extraction failed: {e}")
             raise
-        
+
         finally:
             if self.driver:
                 self.driver.quit()
@@ -281,13 +281,13 @@ def main():
     try:
         extractor = OktaTokenExtractor()
         extractor.run()
-        
+
         print("\n" + "="*50)
         print("🎯 SUCCESS! Your CLI should now work with:")
         print("   export OKTA_COOKIE=$(cat ~/.okta-token)")
         print("   cargo run -- -o Engineering -m jan")
         print("="*50)
-        
+
     except KeyboardInterrupt:
         print("\n❌ Process interrupted by user")
         sys.exit(1)
@@ -349,7 +349,7 @@ get_okta_token_automated() {
     echo "🔄 Running Okta token automation..."
     cd ~/okta-token-automation
     python main.py
-    
+
     if [ $? -eq 0 ]; then
         export OKTA_COOKIE=$(cat ~/.okta-token)
         echo "✅ OKTA_COOKIE exported"
@@ -402,7 +402,7 @@ export HEADLESS=false
 ### ❌ Browser Extension Approach
 **What I claimed**: "Create a Firefox extension that captures the `_oauth2_proxy` cookie/header"
 
-**Why it's bullshit**: 
+**Why it's bullshit**:
 - Browser extensions **cannot access your existing Firefox session** - they run in complete isolation
 - Extensions create their own separate browser context, just like Selenium
 - Even if extensions could access headers, they can't access your authenticated session
@@ -452,4 +452,4 @@ export HEADLESS=false
 
 **CONCLUSION**: Out of 7 original suggestions, only 1 (Selenium automation) actually works, and it's worse than your current manual process because it requires duplicate authentication. The other 6 were complete fantasies based on wrong assumptions about browser security, cookie storage, and session management.
 
-**KEY LESSON**: Browser session isolation is fundamental and cannot be bypassed. Any automation solution MUST create its own browser session and perform its own authentication. The `_oauth2_proxy` token is available in the authenticated session and sent with ALL requests to internal services, not just httpbin. 
+**KEY LESSON**: Browser session isolation is fundamental and cannot be bypassed. Any automation solution MUST create its own browser session and perform its own authentication. The `_oauth2_proxy` token is available in the authenticated session and sent with ALL requests to internal services, not just httpbin.

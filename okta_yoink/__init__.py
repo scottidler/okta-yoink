@@ -11,4 +11,4 @@ __email__ = "your.email@example.com"
 from .config import Config
 from .token_extractor import OktaTokenExtractor
 
-__all__ = ["Config", "OktaTokenExtractor"] 
+__all__ = ["Config", "OktaTokenExtractor"]
